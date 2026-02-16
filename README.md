@@ -67,17 +67,17 @@
 ### 🏠 **Main Dashboard — Upload Interface**
 *Military-tactical dark UI with cyan and amber accents*
 
-<img src="https://github.com/arun-248/Image-Intelligence-Risk-Analysis-System/blob/main/screenshots/dashboard.png" alt="VisionIQ Dashboard" width="800"/>
+<img src="https://github.com/arun-248/Image-Intelligence-Risk-Analysis-System/blob/main/VisionIQ_Dashboard.png" alt="VisionIQ Dashboard" width="800"/>
 
 ### 📊 **Detection Results**
 *Dual YOLO model output with color-coded bounding boxes*
 
-<img src="https://github.com/arun-248/Image-Intelligence-Risk-Analysis-System/blob/main/screenshots/detection.png" alt="Detection Results" width="800"/>
+<img src="https://github.com/arun-248/Image-Intelligence-Risk-Analysis-System/blob/main/Detection_Results.png" alt="Detection Results" width="800"/>
 
 ### ⚠️ **Risk Analysis Panel**
 *Critical risk score with triggered rules and recommendations*
 
-<img src="https://github.com/arun-248/Image-Intelligence-Risk-Analysis-System/blob/main/screenshots/risk.png" alt="Risk Analysis" width="800"/>
+<img src="https://github.com/arun-248/Image-Intelligence-Risk-Analysis-System/blob/main/Risk_Analysis.png" alt="Risk Analysis" width="800"/>
 
 </div>
 
