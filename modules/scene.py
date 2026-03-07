@@ -1,6 +1,6 @@
 """
-scene.py — Multi-Signal Scene Classifier (with Context Engine support)
-Now reads INFERRED_WEAPON category from context engine detections
+scene.py — Scene Classifier WITHOUT color-based violence detection
+Fixed version - removed red color = violence rule
 """
 
 import numpy as np
@@ -57,6 +57,7 @@ KEYWORD_SCENE_MAP = {
 
 
 def classify_scene(image: Image.Image, detection_result: dict = None):
+    """Classify scene using objects + ImageNet + brightness (NO color-based violence)"""
     signals = []
 
     # Signal 1: Object + Context based (HIGHEST priority)
@@ -69,9 +70,8 @@ def classify_scene(image: Image.Image, detection_result: dict = None):
         s = _imagenet(image)
         if s: signals.append(s)
 
-    # Signal 3: Color analysis
-    s = _color(image)
-    if s: signals.append(s)
+    # Signal 3: REMOVED COLOR ANALYSIS - was causing false positives
+    # Old code checked if red > 120 = violence, which flagged sunsets/red rooms
 
     # Signal 4: Brightness
     s = _brightness(image)
@@ -94,6 +94,7 @@ def classify_scene(image: Image.Image, detection_result: dict = None):
 
 
 def _from_objects(det):
+    """Detect scene from objects and context engine (with confidence thresholds)"""
     cats    = det.get("category_counts", {})
     objs    = det.get("object_counts",   {})
     obj_keys = [k.lower() for k in objs.keys()]
@@ -101,51 +102,58 @@ def _from_objects(det):
     fires    = det.get("fire_found",     [])
     context  = det.get("context_detections", [])
 
-    # Real weapon detected by YOLO
+    # Real weapon detected by YOLO (check confidence)
     if weapons:
-        real_weapons = [w for w in weapons if w.get("source") != "CONTEXT_ENGINE"]
-        inferred     = [w for w in weapons if w.get("source") == "CONTEXT_ENGINE"]
+        real_weapons = [w for w in weapons 
+                       if w.get("source") != "CONTEXT_ENGINE" 
+                       and w.get("confidence", 0) >= 60]  # 60% minimum
+        inferred = [w for w in weapons if w.get("source") == "CONTEXT_ENGINE"]
 
         if real_weapons:
             wnames = " ".join(w["label"].lower() for w in real_weapons)
             if any(g in wnames for g in ["gun","rifle","handgun","shotgun","pistol","firearm"]):
-                return ("robbery", 92, "🔫 Firearm confirmed by YOLO")
-            return ("weapon_threat", 88, "⚔️ Weapon confirmed by YOLO")
+                return ("robbery", 88, "🔫 Firearm confirmed by YOLO")  # Lowered from 92
+            return ("weapon_threat", 82, "⚔️ Weapon confirmed by YOLO")  # Lowered from 88
 
-        # Context engine inferences
+        # Context engine inferences (already have lower confidence)
         if inferred:
             reasons = " ".join(w.get("reason","") for w in inferred).lower()
             if "robbery" in reasons or "lying" in reasons:
-                return ("robbery", 82, f"🔫 Context engine: {inferred[0].get('reason','robbery pattern')}")
+                return ("robbery", 75, f"🔫 Context: {inferred[0].get('reason','robbery pattern')}")
             if "weapon" in reasons or "pointing" in reasons:
-                return ("weapon_threat", 78, f"⚔️ Context engine: {inferred[0].get('reason','weapon posture')}")
+                return ("weapon_threat", 70, f"⚔️ Context: {inferred[0].get('reason','weapon posture')}")
             if "violence" in reasons or "injury" in reasons:
-                return ("violence", 75, f"🚨 Context engine: {inferred[0].get('reason','violence')}")
+                return ("violence", 68, f"🚨 Context: {inferred[0].get('reason','violence')}")
 
     if fires:
-        return ("fire_emergency", 88, "🔥 Fire/smoke detected")
+        return ("fire_emergency", 85, "🔥 Fire/smoke detected")  # Lowered from 88
 
     if any(v in obj_keys for v in ["ambulance","fire truck"]):
-        return ("accident", 80, "Emergency vehicle → accident scene")
+        return ("accident", 75, "Emergency vehicle → accident scene")  # Lowered from 80
 
-    person_n  = objs.get("person", 0)
+    # Get actual counts with confidence check
+    person_n = sum(1 for obj, data in objs.items() 
+                   if "person" in obj.lower() 
+                   and data.get("max_confidence", 0) >= 50)
+    
     vehicle_n = cats.get("VEHICLE", 0)
 
     if vehicle_n >= 2 and person_n >= 1:
-        return ("road", 75, "Multiple vehicles + people")
+        return ("road", 70, "Multiple vehicles + people")
     if vehicle_n >= 1 and any(t in obj_keys for t in ["traffic light","stop sign"]):
-        return ("road", 80, "Vehicle + traffic sign")
+        return ("road", 75, "Vehicle + traffic sign")
     if person_n >= 5:
-        return ("crowded_area", 78, f"{person_n} people detected")
+        return ("crowded_area", 72, f"{person_n} people detected")
     if any(o in obj_keys for o in ["laptop","keyboard","monitor","mouse","tie"]):
-        return ("office", 75, "Office equipment/attire detected")
+        return ("office", 70, "Office equipment/attire detected")
     if any(k in obj_keys for k in ["microwave","oven","refrigerator","toaster"]):
-        return ("kitchen", 75, "Kitchen appliances detected")
+        return ("kitchen", 70, "Kitchen appliances detected")
 
     return None
 
 
 def _imagenet(image):
+    """ImageNet-based scene classification"""
     try:
         model = get_model()
         img = image.convert("RGB").resize((224,224))
@@ -166,21 +174,8 @@ def _imagenet(image):
         return None
 
 
-def _color(image):
-    try:
-        arr = np.array(image.convert("RGB").resize((100,100)), dtype=np.float32)
-        r,g,b = arr[:,:,0].mean(), arr[:,:,1].mean(), arr[:,:,2].mean()
-        brightness = (r+g+b)/3
-        if r>160 and g>80 and b<80 and r>g*1.5:
-            return ("fire_emergency", 60, "Color: fire signature")
-        if r>120 and b<60 and g<70 and brightness<100:
-            return ("violence", 45, "Color: red-dark signature")
-        return None
-    except Exception:
-        return None
-
-
 def _brightness(image):
+    """Brightness-based scene detection (night scenes only)"""
     try:
         avg = np.array(image.convert("L").resize((100,100)),dtype=np.float32).mean()
         if avg < 50:
@@ -191,6 +186,7 @@ def _brightness(image):
 
 
 def _combine(signals):
+    """Combine multiple signals using weighted voting"""
     if not signals:
         return ("unknown", 0, "No signals")
     votes = {}
@@ -211,6 +207,7 @@ def _combine(signals):
 
 
 def _top_imagenet(image):
+    """Get top ImageNet predictions for display"""
     try:
         model = get_model()
         img = image.convert("RGB").resize((224,224))

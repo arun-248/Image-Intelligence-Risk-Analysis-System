@@ -1,5 +1,6 @@
 """
 app.py — VisionIQ: AI Multi-Image Intelligence & Risk Analysis System
+Fixed version with utils import
 Run: streamlit run app.py
 """
 
@@ -27,8 +28,6 @@ from modules.utils import (
 
 # ═══════════════════════════════════════════════════════
 # CSS — Military/Tactical Intelligence Dashboard
-# Orbitron headings + Source Code Pro data
-# Deep navy + electric cyan + amber alerts
 # ═══════════════════════════════════════════════════════
 st.markdown("""
 <style>
@@ -57,7 +56,6 @@ html, body, .stApp, [data-testid="stAppViewContainer"] {
     font-family: 'Exo 2', sans-serif !important;
 }
 
-/* scanlines */
 .stApp::before {
     content: '';
     position: fixed; top:0; left:0; right:0; bottom:0;
@@ -125,7 +123,6 @@ hr { border-color: var(--border) !important; }
 ::-webkit-scrollbar-track { background: var(--bg-deep); }
 ::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius:2px; }
 
-/* ── Component classes ── */
 .ph { font-family:'Source Code Pro',monospace; font-size:10px; color:var(--cyan-dim);
       letter-spacing:3px; text-transform:uppercase; border-bottom:1px solid var(--border);
       padding-bottom:8px; margin-bottom:16px; }
@@ -249,7 +246,7 @@ st.markdown("""
 
 
 # ═══════════════════════════════════════════════════════
-# HOW IT WORKS — always visible
+# HOW IT WORKS
 # ═══════════════════════════════════════════════════════
 with st.expander("📖  WHAT IS THIS SYSTEM? — Click to understand everything", expanded=False):
     st.markdown("""
@@ -282,7 +279,7 @@ with st.expander("📖  WHAT IS THIS SYSTEM? — Click to understand everything"
     <span style='color:#00e5ff;'>STEP 3</span><span style='color:#607d8b;'> ── </span>
     <span>MobileNetV2 deep learning model classifies scene type (road, office, kitchen etc.)</span><br>
     <span style='color:#00e5ff;'>STEP 4</span><span style='color:#607d8b;'> ── </span>
-    <span>Risk Engine checks 15+ rules using objects + scene → calculates risk score 0–100</span><br>
+    <span>Risk Engine checks 30+ rules using objects + scene → calculates risk score 0–100</span><br>
     <span style='color:#ffab00;'>OUTPUT</span><span style='color:#607d8b;'> ── </span>
     <span>Dashboard shows annotated image, charts, risk score, recommendations, full report</span>
     </div>
@@ -295,8 +292,8 @@ with st.expander("📖  WHAT IS THIS SYSTEM? — Click to understand everything"
     <br><br>
     <b style='color:#ffab00;'>What is a risk score?</b> The risk engine checks specific dangerous
     combinations. Example: detecting a <i>person</i> + <i>cell phone</i> + <i>road scene</i>
-    together = distracted driving risk (+40 points). Multiple rules can trigger at once.
-    Total risk score = sum of all triggered rules. 0–24 = Low, 25–49 = Medium, 50–74 = High, 75+ = Critical.
+    together = distracted driving risk (+35 points). Multiple rules can trigger at once.
+    <b>NEW:</b> Categories are now CAPPED to prevent unfair stacking.
 
     </div>
     """, unsafe_allow_html=True)
@@ -337,7 +334,7 @@ if "Single Image" in mode:
                 </div>""", unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        analyze = st.button("🛰️   INITIATE FULL AI ANALYSIS", width="stretch")
+        analyze = st.button("🛰️   INITIATE FULL AI ANALYSIS", key="analyze_btn")
 
         if analyze:
             prog = st.progress(0)
@@ -377,18 +374,24 @@ if "Single Image" in mode:
             risk_sc   = ris_result.get("risk_score",     0)
 
             if weapons:
-                wnames = ", ".join(d["label"] for d in weapons)
-                st.markdown(
-                    f"<div style='background:#2d0000;border:2px solid #ff3d3d;"
-                    f"border-radius:8px;padding:16px 20px;margin:12px 0;'>"
-                    f"<div style='font-family:Orbitron,monospace;font-size:14px;"
-                    f"color:#ff3d3d;letter-spacing:2px;font-weight:700;'>"
-                    f"🔫 CRITICAL ALERT — WEAPON DETECTED: {wnames.upper()}</div>"
-                    f"<div style='font-size:13px;color:#fca5a5;margin-top:6px;'>"
-                    f"Detected by YOLOv8 Open Images V7 (600-class model). "
-                    f"Immediate security review recommended.</div></div>",
-                    unsafe_allow_html=True
-                )
+                # Filter to only high-confidence real weapons
+                high_conf_weapons = [w for w in weapons 
+                                    if w.get("source") != "CONTEXT_ENGINE" 
+                                    and w.get("confidence", 0) >= 60]
+                
+                if high_conf_weapons:
+                    wnames = ", ".join(d["label"] for d in high_conf_weapons)
+                    st.markdown(
+                        f"<div style='background:#2d0000;border:2px solid #ff3d3d;"
+                        f"border-radius:8px;padding:16px 20px;margin:12px 0;'>"
+                        f"<div style='font-family:Orbitron,monospace;font-size:14px;"
+                        f"color:#ff3d3d;letter-spacing:2px;font-weight:700;'>"
+                        f"🔫 CRITICAL ALERT — WEAPON DETECTED: {wnames.upper()}</div>"
+                        f"<div style='font-size:13px;color:#fca5a5;margin-top:6px;'>"
+                        f"Detected by YOLOv8 with {high_conf_weapons[0]['confidence']}% confidence. "
+                        f"Immediate security review recommended.</div></div>",
+                        unsafe_allow_html=True
+                    )
             elif is_danger:
                 scene_label = sce_result.get("scene","").replace("_"," ").upper()
                 st.error(f"⚠️ DANGER SCENE DETECTED: {scene_label}  |  Risk Score: {risk_sc}/100 — See Risk Analysis tab")
@@ -418,7 +421,7 @@ if "Single Image" in mode:
                 with col_img:
                     st.markdown('<div class="ph">Annotated Output — Objects with Bounding Boxes</div>',
                                 unsafe_allow_html=True)
-                    st.image(resize_for_display(det_result["annotated_image"]), width="stretch")
+                    st.image(resize_for_display(det_result["annotated_image"]), use_container_width=True)
                     st.markdown("""<div style='font-family:Source Code Pro,monospace;font-size:11px;
                         color:#607d8b;text-align:center;margin-top:6px;'>
                         Each colored box = one detected object · Label = name + confidence %
@@ -427,8 +430,16 @@ if "Single Image" in mode:
                 with col_det:
                     st.markdown('<div class="ph">Detection Summary</div>', unsafe_allow_html=True)
                     total = det_result["total_objects"]
-                    avg_conf = (sum(d["confidence"] for d in det_result["detections"]) / total
-                               if total > 0 else 0)
+                    
+                    # Calculate average confidence from new structure
+                    avg_conf = 0
+                    if total > 0:
+                        all_confs = []
+                        for obj_data in det_result["object_counts"].values():
+                            if isinstance(obj_data, dict):
+                                all_confs.extend(obj_data.get("confidences", []))
+                        avg_conf = sum(all_confs) / len(all_confs) if all_confs else 0
+                    
                     ca, cb = st.columns(2)
                     with ca:
                         st.markdown(f"""<div class='sb'><div class='sv'>{total}</div>
@@ -444,9 +455,14 @@ if "Single Image" in mode:
                     if det_result["detections"]:
                         st.markdown('<div class="ph" style="margin-top:14px;">Detected Objects</div>',
                                     unsafe_allow_html=True)
-                        for label, count in det_result["object_counts"].items():
-                            best_conf = max(d["confidence"] for d in det_result["detections"]
-                                           if d["label"] == label)
+                        for label, data in det_result["object_counts"].items():
+                            if isinstance(data, dict):
+                                count = data.get("count", 0)
+                                best_conf = data.get("max_confidence", 0)
+                            else:
+                                count = data
+                                best_conf = 0
+                            
                             color = ("#00e676" if best_conf>=80 else
                                      "#ffab00" if best_conf>=55 else "#ff3d3d")
                             st.markdown(f"""
@@ -461,7 +477,7 @@ if "Single Image" in mode:
                                         <div style='background:{color};height:3px;border-radius:2px;
                                                     width:{int(best_conf)}%;'></div></div>
                                 </div>
-                                <div class='oc' style='color:{color};'>{best_conf}%</div>
+                                <div class='oc' style='color:{color};'>{best_conf:.0f}%</div>
                             </div>""", unsafe_allow_html=True)
                     else:
                         st.markdown("""<div class='eb' style='text-align:center;padding:24px;'>
@@ -548,17 +564,16 @@ if "Single Image" in mode:
             # ──────────────────────────────────────────
             with t3:
                 st.markdown("""
-                <div class='eb'><div class='et'>How Does Risk Analysis Work?</div>
+                <div class='eb'><div class='et'>How Does Risk Analysis Work? (FIXED VERSION)</div>
                 <div class='ex'>
-                The Risk Engine is the <b>most unique and intelligent part</b> of this system.
-                It combines the detected objects AND scene type, then checks <b>15+ predefined
+                The Risk Engine combines detected objects AND scene type, then checks <b>30+ predefined
                 risk rules</b>. Each rule looks for specific dangerous combinations.<br><br>
-                Example rule: <i>"Is there a PERSON + CELL PHONE + ROAD scene?"</i>
-                → triggers distracted driving alert (+40 points).<br><br>
-                The total score is the sum of all triggered rules + the scene's base risk.
-                The system then tells you <b>exactly why</b> the score is what it is —
-                this is called <b>Explainable AI (XAI)</b>: you can understand and verify
-                every decision the AI made, unlike a black-box system.
+                <b>NEW FIX:</b> Categories are now <b>CAPPED</b> to prevent unfair stacking. For example,
+                the "security" category can contribute a maximum of 35 points total, even if 5 security
+                rules trigger. This prevents a crowded road at night from hitting CRITICAL just because
+                of score accumulation.<br><br>
+                <b>NEW FIX 2:</b> All rules now check <b>confidence thresholds</b>. A gun detected at 
+                20% confidence won't trigger the firearm rule (requires 70%+).
                 </div></div>
                 """, unsafe_allow_html=True)
 
@@ -575,27 +590,30 @@ if "Single Image" in mode:
 
                 col_g, col_r = st.columns([2,3])
                 with col_g:
-                    st.plotly_chart(make_risk_gauge(r_score, r_level), width="stretch")
+                    st.plotly_chart(make_risk_gauge(r_score, r_level), use_container_width=True)
+                    
                     # Score breakdown
                     breakdown_rows = f"""
                     <div style='display:flex;justify-content:space-between;'>
                         <span style='color:#607d8b;'>Scene base risk</span>
                         <span style='color:#ffab00;'>+{s_base}</span></div>"""
-                    for rule in r_rules:
+                    
+                    for cat, score in r_cats.items():
                         breakdown_rows += f"""
                         <div style='display:flex;justify-content:space-between;'>
-                            <span style='color:#607d8b;font-size:11px;'>
-                                {rule["name"].replace("_"," ")}</span>
-                            <span style='color:#ff3d3d;'>+{rule["score_added"]}</span></div>"""
+                            <span style='color:#607d8b;'>{cat.replace('_',' ').title()}</span>
+                            <span style='color:#ff3d3d;'>+{score}</span></div>"""
+                    
                     breakdown_rows += f"""
                     <div style='border-top:1px solid #0d3558;margin-top:6px;padding-top:6px;
                                 display:flex;justify-content:space-between;'>
                         <span style='color:#cdd9e5;font-weight:600;'>TOTAL</span>
                         <span style='color:#00e5ff;font-family:Orbitron,monospace;
                                      font-weight:700;'>{r_score}/100</span></div>"""
+                    
                     st.markdown(f"""
                     <div class='eb' style='margin-top:8px;'>
-                        <div class='et'>Score Breakdown</div>
+                        <div class='et'>Score Breakdown (Capped Categories)</div>
                         <div style='font-family:Source Code Pro,monospace;font-size:12px;line-height:2;'>
                         {breakdown_rows}</div>
                     </div>""", unsafe_allow_html=True)
@@ -632,7 +650,7 @@ if "Single Image" in mode:
                     else:
                         st.markdown("""<div class='rc gn'>
                         <div class='rt'>✅ No Risk Factors Triggered</div>
-                        <div class='rd2'>The AI checked all 15+ risk rules against the detected objects
+                        <div class='rd2'>The AI checked all 30+ risk rules against the detected objects
                         and scene type but found no dangerous combinations. This scene appears safe
                         according to current risk rules.</div></div>""", unsafe_allow_html=True)
 
@@ -664,13 +682,13 @@ if "Single Image" in mode:
                 cc1, cc2 = st.columns(2)
                 with cc1:
                     st.plotly_chart(make_confidence_bar_chart(det_result.get("detections",[])),
-                                    width="stretch")
+                                    use_container_width=True)
                 with cc2:
                     st.plotly_chart(make_object_count_pie(det_result.get("object_counts",{})),
-                                    width="stretch")
+                                    use_container_width=True)
                 if ris_result.get("category_scores"):
                     st.plotly_chart(make_risk_category_bar(ris_result.get("category_scores",{})),
-                                    width="stretch")
+                                    use_container_width=True)
                 else:
                     st.markdown("""<div style='text-align:center;padding:30px;
                         font-family:Source Code Pro,monospace;font-size:12px;color:#607d8b;'>
@@ -695,7 +713,7 @@ if "Single Image" in mode:
                 st.markdown(report)
                 st.download_button("📥  Download Full Report (.md)", data=report,
                     file_name=f"visioniq_{uploaded_file.name}.md",
-                    mime="text/markdown", width="stretch")
+                    mime="text/markdown", use_container_width=True)
 
     else:
         st.markdown("""
@@ -744,9 +762,9 @@ elif "Multi-Image" in mode:
         for i, (img, name) in enumerate(zip(images, names)):
             with thumb_cols[i % 5]:
                 t = img.copy(); t.thumbnail((180,180))
-                st.image(t, caption=name[:16], width="stretch")
+                st.image(t, caption=name[:16], use_container_width=True)
 
-        run_sim = st.button("🛰️   RUN SIMILARITY ANALYSIS", width="stretch")
+        run_sim = st.button("🛰️   RUN SIMILARITY ANALYSIS", key="sim_btn")
 
         if run_sim:
             with st.spinner("Extracting deep learning embeddings and computing cosine similarity..."):
@@ -777,7 +795,7 @@ elif "Multi-Image" in mode:
             </div>""", unsafe_allow_html=True)
             st.plotly_chart(make_similarity_heatmap(
                 sim_result["similarity_matrix"], sim_result["names"]),
-                width="stretch")
+                use_container_width=True)
 
             if dups:
                 st.markdown("""<div style='background:#1a0000;border:1px solid #ff3d3d;

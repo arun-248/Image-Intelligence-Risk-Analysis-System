@@ -1,16 +1,10 @@
 """
 detection.py — Smart Dual Detection + Context Analysis Engine
-PIL-only drawing — no cv2 required — works on Streamlit Cloud
+Fixed version with confidence thresholds and improved rules
 """
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-
-try:
-    import cv2
-    CV2_AVAILABLE = True
-except ImportError:
-    CV2_AVAILABLE = False
 
 try:
     from ultralytics import YOLO
@@ -70,89 +64,113 @@ COLORS = {
 
 
 # ─────────────────────────────────────────────────────────────────
-# CONTEXT ANALYSIS ENGINE — pure numpy/PIL, no cv2 needed
+# CONTEXT ANALYSIS ENGINE
 # ─────────────────────────────────────────────────────────────────
 
 def context_analysis(image: Image.Image, yolo_detections: list) -> list:
+    """Analyzes image context to infer weapons/threats with CONFIDENCE THRESHOLDS"""
     img_array = np.array(image.convert("RGB"))
     h, w = img_array.shape[:2]
     inferred = []
-    persons = [d for d in yolo_detections if d["category"] == "PERSON"]
+    
+    # Only consider high-confidence person detections
+    persons = [d for d in yolo_detections 
+               if d["category"] == "PERSON" and d["confidence"] >= 60]
     n_persons = len(persons)
 
-    # Check 1: People lying on ground
+    # Check 1: People lying on ground (requires 2+ people for context)
     lying_count = 0
-    for p in persons:
-        x1,y1,x2,y2 = p["bbox"]
-        bw = x2 - x1
-        bh = y2 - y1
-        if bw > bh * 1.4:
-            lying_count += 1
+    if n_persons >= 2:
+        for p in persons:
+            x1,y1,x2,y2 = p["bbox"]
+            bw = x2 - x1
+            bh = y2 - y1
+            if bw > bh * 1.4:
+                lying_count += 1
 
-    # Check 2: Weapon proxy — dark elongated shapes (numpy only)
-    weapon_proxy_count = _find_elongated_dark_objects_numpy(img_array, persons)
+    # Check 2: Weapon proxy detection (only if people present)
+    weapon_proxy_count = 0
+    if n_persons >= 1:
+        weapon_proxy_count = _find_elongated_dark_objects_numpy(img_array, persons)
 
-    # Check 3: Extended arms
+    # Check 3: Extended arms (weapon pointing posture)
     extended_arms = 0
-    for p in persons:
-        x1,y1,x2,y2 = p["bbox"]
-        bw = x2 - x1
-        bh = y2 - y1
-        if bh > 0 and bw / bh > 0.6:
-            extended_arms += 1
+    if n_persons >= 2:
+        for p in persons:
+            x1,y1,x2,y2 = p["bbox"]
+            bw = x2 - x1
+            bh = y2 - y1
+            if bh > 0 and bw / bh > 0.6:
+                extended_arms += 1
 
     # Check 4: Indoor scene
     indoor_scene = _is_indoor_scene(img_array)
 
-    # Check 5: Blood color
+    # Check 5: Blood color signature
     has_blood_color = _detect_blood_color(img_array)
 
     # Check 6: Raised hands
     standing = n_persons - lying_count
     has_raised_hands = _detect_raised_hands(img_array, persons)
 
-    # Inference Rules
+    # ═══ STRICTER INFERENCE RULES WITH HIGHER THRESHOLDS ═══
+    
+    # Rule 1: Armed robbery (needs 3+ people + lying victim + indoor)
     if n_persons >= 3 and lying_count >= 1 and standing >= 2 and indoor_scene:
         inferred.append({
             "label": "⚠ Inferred: Armed Robbery Posture",
-            "confidence": 78.0, "bbox": (10, 10, w-10, h-10),
-            "area": w * h, "category": "INFERRED_WEAPON",
+            "confidence": 72.0,  # Lowered from 78
+            "bbox": (10, 10, w-10, h-10),
+            "area": w * h,
+            "category": "INFERRED_WEAPON",
             "source": "CONTEXT_ENGINE",
             "reason": f"{n_persons} people, {lying_count} lying (victim), {standing} standing — robbery pattern"
         })
 
-    if extended_arms >= 2 and indoor_scene and n_persons >= 2:
+    # Rule 2: Weapon pointing (needs 3+ people + extended arms + indoor)
+    if extended_arms >= 2 and indoor_scene and n_persons >= 3:
         inferred.append({
             "label": "⚠ Inferred: Weapon Pointing Posture",
-            "confidence": 72.0, "bbox": (20, 20, w-20, h-20),
-            "area": w * h, "category": "INFERRED_WEAPON",
+            "confidence": 65.0,  # Lowered from 72
+            "bbox": (20, 20, w-20, h-20),
+            "area": w * h,
+            "category": "INFERRED_WEAPON",
             "source": "CONTEXT_ENGINE",
             "reason": f"{extended_arms} people in weapon-pointing posture"
         })
 
-    if weapon_proxy_count >= 1 and n_persons >= 1:
+    # Rule 3: Weapon-shaped object (needs 2+ people minimum)
+    if weapon_proxy_count >= 1 and n_persons >= 2:
         inferred.append({
             "label": "⚠ Inferred: Weapon-Shaped Object",
-            "confidence": 65.0, "bbox": (30, 30, w//2, h//2),
-            "area": (w//2) * (h//2), "category": "INFERRED_WEAPON",
+            "confidence": 58.0,  # Lowered from 65
+            "bbox": (30, 30, w//2, h//2),
+            "area": (w//2) * (h//2),
+            "category": "INFERRED_WEAPON",
             "source": "CONTEXT_ENGINE",
             "reason": "Dark elongated object near person — possible firearm/weapon"
         })
 
-    if has_blood_color and lying_count >= 1:
+    # Rule 4: Violence/injury (needs lying + blood + 2+ people)
+    if has_blood_color and lying_count >= 1 and n_persons >= 2:
         inferred.append({
             "label": "⚠ Inferred: Violence/Injury Scene",
-            "confidence": 70.0, "bbox": (5, 5, w-5, h-5),
-            "area": w * h, "category": "INFERRED_WEAPON",
+            "confidence": 68.0,  # Lowered from 70
+            "bbox": (5, 5, w-5, h-5),
+            "area": w * h,
+            "category": "INFERRED_WEAPON",
             "source": "CONTEXT_ENGINE",
             "reason": "Blood-color signature + person lying — violence/injury"
         })
 
-    if has_raised_hands and n_persons >= 3 and indoor_scene:
+    # Rule 5: Hands-up victim (needs 4+ people + indoor)
+    if has_raised_hands and n_persons >= 4 and indoor_scene:
         inferred.append({
             "label": "⚠ Inferred: Hands-Up (Victim Posture)",
-            "confidence": 75.0, "bbox": (w//3, 0, 2*w//3, h//2),
-            "area": (w//3) * (h//2), "category": "INFERRED_WEAPON",
+            "confidence": 70.0,  # Lowered from 75
+            "bbox": (w//3, 0, 2*w//3, h//2),
+            "area": (w//3) * (h//2),
+            "category": "INFERRED_WEAPON",
             "source": "CONTEXT_ENGINE",
             "reason": "Person with raised hands — possible robbery victim posture"
         })
@@ -161,13 +179,11 @@ def context_analysis(image: Image.Image, yolo_detections: list) -> list:
 
 
 def _find_elongated_dark_objects_numpy(img, persons, min_aspect=3.0):
-    """Pure numpy weapon proxy detection — no cv2."""
+    """Pure numpy weapon proxy detection"""
     count = 0
     try:
         gray = np.mean(img, axis=2)
         dark = (gray < 60).astype(np.uint8)
-        row_sums = dark.sum(axis=1)
-        col_sums = dark.sum(axis=0)
         h, w = gray.shape
         step = 20
         for y in range(0, h - step, step):
@@ -198,11 +214,14 @@ def _is_indoor_scene(img):
 
 
 def _detect_blood_color(img):
+    """FIXED: More strict blood color detection to reduce false positives"""
     try:
         arr = img.astype(np.float32)
         r, g, b = arr[:,:,0], arr[:,:,1], arr[:,:,2]
-        mask = (r > 120) & (r > g*1.8) & (r > b*1.8) & ((r+g+b)/3 < 140)
-        return float(mask.sum()) / (img.shape[0] * img.shape[1]) > 0.02
+        # Stricter: needs dark red, not bright red like sunsets
+        mask = (r > 100) & (r < 160) & (r > g*2.0) & (r > b*2.0) & ((r+g+b)/3 < 120)
+        ratio = float(mask.sum()) / (img.shape[0] * img.shape[1])
+        return ratio > 0.03  # Raised threshold from 0.02
     except Exception:
         return False
 
@@ -225,6 +244,7 @@ def _detect_raised_hands(img, persons):
 # ─────────────────────────────────────────────────────────────────
 
 def detect_objects(image: Image.Image, confidence_threshold: float = 0.25):
+    """Main detection with confidence tracking"""
     if not YOLO_AVAILABLE:
         return _fallback(image)
 
@@ -240,14 +260,17 @@ def detect_objects(image: Image.Image, confidence_threshold: float = 0.25):
                     conf  = float(box.conf[0])
                     x1,y1,x2,y2 = [int(v) for v in box.xyxy[0]]
                     all_dets.append({
-                        "label": label, "confidence": round(conf*100,1),
-                        "bbox": (x1,y1,x2,y2), "area": (x2-x1)*(y2-y1),
-                        "category": _cat(label), "source": "COCO"
+                        "label": label,
+                        "confidence": round(conf*100,1),
+                        "bbox": (x1,y1,x2,y2),
+                        "area": (x2-x1)*(y2-y1),
+                        "category": _cat(label),
+                        "source": "COCO"
                     })
     except Exception:
         pass
 
-    # Layer 2: OIV7 model
+    # Layer 2: OIV7 model (weapon-focused)
     try:
         oiv7 = get_oiv7_model()
         if oiv7:
@@ -259,30 +282,54 @@ def detect_objects(image: Image.Image, confidence_threshold: float = 0.25):
                         x1,y1,x2,y2 = [int(v) for v in box.xyxy[0]]
                         if not _is_dup((x1,y1,x2,y2), all_dets):
                             all_dets.append({
-                                "label": label, "confidence": round(conf*100,1),
-                                "bbox": (x1,y1,x2,y2), "area": (x2-x1)*(y2-y1),
-                                "category": _cat(label), "source": "OIV7"
+                                "label": label,
+                                "confidence": round(conf*100,1),
+                                "bbox": (x1,y1,x2,y2),
+                                "area": (x2-x1)*(y2-y1),
+                                "category": _cat(label),
+                                "source": "OIV7"
                             })
     except Exception:
         pass
 
-    # Layer 3: Context Analysis
+    # Layer 3: Context Analysis (only if high-confidence people detected)
     context_dets = context_analysis(image, all_dets)
     all_dets.extend(context_dets)
     all_dets.sort(key=lambda x: x["confidence"], reverse=True)
 
+    # Build structured object counts with confidence tracking
     obj_counts = {}
     cat_counts = {}
     for d in all_dets:
-        obj_counts[d["label"]] = obj_counts.get(d["label"],0)+1
-        cat_counts[d["category"]] = cat_counts.get(d["category"],0)+1
+        label = d["label"]
+        cat = d["category"]
+        conf = d["confidence"]
+        
+        if label not in obj_counts:
+            obj_counts[label] = {
+                "count": 0,
+                "max_confidence": 0.0,
+                "avg_confidence": 0.0,
+                "confidences": []
+            }
+        
+        obj_counts[label]["count"] += 1
+        obj_counts[label]["confidences"].append(conf)
+        obj_counts[label]["max_confidence"] = max(obj_counts[label]["max_confidence"], conf)
+        
+        cat_counts[cat] = cat_counts.get(cat, 0) + 1
+    
+    # Calculate average confidences
+    for obj in obj_counts.values():
+        obj["avg_confidence"] = sum(obj["confidences"]) / len(obj["confidences"])
 
-    weapons   = [d for d in all_dets if d["category"] in ("WEAPON","INFERRED_WEAPON")]
-    fires     = [d for d in all_dets if d["category"] == "FIRE_HAZARD"]
+    weapons = [d for d in all_dets if d["category"] in ("WEAPON","INFERRED_WEAPON")]
+    fires = [d for d in all_dets if d["category"] == "FIRE_HAZARD"]
     annotated = _draw(image.copy(), all_dets)
 
     if all_dets:
-        parts = [f"{v}x {k}" for k,v in list(obj_counts.items())[:6]]
+        # Show top 6 objects with counts
+        parts = [f"{v['count']}x {k}" for k,v in list(obj_counts.items())[:6]]
         summary = "Detected: " + ", ".join(parts)
         if weapons:
             wnames = ", ".join(d["label"] for d in weapons[:3])
@@ -291,17 +338,21 @@ def detect_objects(image: Image.Image, confidence_threshold: float = 0.25):
         summary = "No objects detected. Try lowering confidence threshold."
 
     return {
-        "detections": all_dets, "annotated_image": annotated,
-        "object_counts": obj_counts, "category_counts": cat_counts,
-        "weapons_found": weapons, "fire_found": fires,
-        "total_objects": len(all_dets), "summary": summary,
+        "detections": all_dets,
+        "annotated_image": annotated,
+        "object_counts": obj_counts,
+        "category_counts": cat_counts,
+        "weapons_found": weapons,
+        "fire_found": fires,
+        "total_objects": len(all_dets),
+        "summary": summary,
         "models_used": ["YOLOv8n-COCO","YOLOv8n-OIV7","Context-Engine"],
         "context_detections": context_dets,
     }
 
 
 # ─────────────────────────────────────────────────────────────────
-# PIL-ONLY DRAWING — zero cv2 dependency
+# PIL-ONLY DRAWING
 # ─────────────────────────────────────────────────────────────────
 
 def _draw(image: Image.Image, detections: list) -> Image.Image:
