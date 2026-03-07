@@ -217,7 +217,7 @@ def _classify_from_objects(detection_result: dict) -> Optional[Tuple[str, float,
     """
     category_counts = detection_result.get("category_counts", {})
     object_counts = detection_result.get("object_counts", {})
-    object_keys = [k.lower() for k in object_counts.keys()]
+    obj_keys = [k.lower() for k in object_counts.keys()]  # ← ADD THIS LINE
     weapons = detection_result.get("weapons_found", [])
     fires = detection_result.get("fire_found", [])
     
