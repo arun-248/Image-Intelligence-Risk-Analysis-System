@@ -1,6 +1,6 @@
 """
 app.py — VisionIQ: AI Multi-Image Intelligence & Risk Analysis System
-Fixed version with utils import
+Production version with complete error handling
 Run: streamlit run app.py
 """
 
@@ -26,13 +26,45 @@ from modules.utils import (
     get_image_info, resize_for_display,
 )
 
+# ═══════════════════════════════════════════════════════════════════
+# STARTUP SYSTEM CHECKS (SINGLE INSTANCE - NO DUPLICATES)
+# ═══════════════════════════════════════════════════════════════════
+
+# Check TensorFlow availability
+try:
+    import tensorflow as tf
+    TF_OK = True
+except ImportError:
+    TF_OK = False
+
+# Check YOLO availability
+try:
+    from ultralytics import YOLO
+    YOLO_OK = True
+except ImportError:
+    YOLO_OK = False
+
+# Display warnings for missing dependencies
+if not TF_OK:
+    st.warning(
+        "⚠️ **TensorFlow not installed** — Scene classification and image similarity features are disabled.\n\n"
+        "Install with: `pip install tensorflow-cpu --break-system-packages`",
+        icon="⚠️"
+    )
+
+if not YOLO_OK:
+    st.error(
+        "🚨 **YOLO not installed** — Object detection is disabled. The system cannot function without YOLO.\n\n"
+        "Install with: `pip install ultralytics --break-system-packages`",
+        icon="🚨"
+    )
+
 # ═══════════════════════════════════════════════════════
 # CSS — Military/Tactical Intelligence Dashboard
 # ═══════════════════════════════════════════════════════
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Source+Code+Pro:wght@300;400;600&family=Exo+2:wght@300;400;600;700&display=swap');
-
 :root {
     --bg-deep:    #020b18;
     --bg-panel:   #041428;
