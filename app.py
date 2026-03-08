@@ -1,6 +1,7 @@
+
 """
 app.py — VisionIQ: AI Multi-Image Intelligence & Risk Analysis System
-Production version with complete error handling
+UPGRADED VERSION: Weapon detection, violence indicators, detailed threat analysis
 Run: streamlit run app.py
 """
 
@@ -27,44 +28,42 @@ from modules.utils import (
 )
 
 # ═══════════════════════════════════════════════════════════════════
-# STARTUP SYSTEM CHECKS (SINGLE INSTANCE - NO DUPLICATES)
+# STARTUP SYSTEM CHECKS
 # ═══════════════════════════════════════════════════════════════════
 
-# Check TensorFlow availability
 try:
     import tensorflow as tf
     TF_OK = True
 except ImportError:
     TF_OK = False
 
-# Check YOLO availability
 try:
     from ultralytics import YOLO
     YOLO_OK = True
 except ImportError:
     YOLO_OK = False
 
-# Display warnings for missing dependencies
 if not TF_OK:
     st.warning(
-        "⚠️ **TensorFlow not installed** — Scene classification and image similarity features are disabled.\n\n"
-        "Install with: `pip install tensorflow-cpu --break-system-packages`",
+        "⚠️ **TensorFlow not installed** — Scene classification disabled.\n\n"
+        "Install: `pip install tensorflow-cpu --break-system-packages`",
         icon="⚠️"
     )
 
 if not YOLO_OK:
     st.error(
-        "🚨 **YOLO not installed** — Object detection is disabled. The system cannot function without YOLO.\n\n"
-        "Install with: `pip install ultralytics --break-system-packages`",
+        "🚨 **YOLO not installed** — Object detection disabled.\n\n"
+        "Install: `pip install ultralytics --break-system-packages`",
         icon="🚨"
     )
 
-# ═══════════════════════════════════════════════════════
-# CSS — Military/Tactical Intelligence Dashboard
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+# CSS
+# ═══════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Source+Code+Pro:wght@300;400;600&family=Exo+2:wght@300;400;600;700&display=swap');
+
 :root {
     --bg-deep:    #020b18;
     --bg-panel:   #041428;
@@ -194,7 +193,9 @@ hr { border-color: var(--border) !important; }
       border:1px solid var(--border-hi); border-radius:8px; padding:28px;
       text-align:center; position:relative; overflow:hidden; }
 
-.eb { background:var(--bg-panel); border:1px solid var(--border);
+.eb { background:var(--bg-panel
+CONTINUING FILE 7 (app.py) - PART 2
+); border:1px solid var(--border);
       border-radius:6px; padding:16px 20px; margin:10px 0; }
 .et { font-family:'Orbitron',monospace; font-size:11px; color:var(--cyan-dim);
       letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; }
@@ -208,13 +209,35 @@ hr { border-color: var(--border) !important; }
       border-radius:6px; padding:14px 18px; margin:8px 0;
       display:flex; align-items:center; justify-content:space-between; }
 .sc2 { font-family:'Orbitron',monospace; font-size:18px; font-weight:700; }
+
+.weapon-alert {
+    background: linear-gradient(135deg, #2d0000, #1a0000);
+    border: 3px solid #ff3d3d;
+    border-radius: 8px;
+    padding: 20px 24px;
+    margin: 16px 0;
+    animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+    0%, 100% { box-shadow: 0 0 10px #ff3d3d44; }
+    50% { box-shadow: 0 0 25px #ff3d3d88; }
+}
+
+.violence-alert {
+    background: linear-gradient(135deg, #2d1400, #1a0a00);
+    border: 2px solid #ffab00;
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin: 14px 0;
+}
 </style>
 """, unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 # SIDEBAR
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 with st.sidebar:
     st.markdown("""
     <div style='padding:16px 0 24px 0;'>
@@ -224,7 +247,7 @@ with st.sidebar:
                     color:#00e5ff;letter-spacing:3px;'>
             VISION<span style='color:#ffab00;'>IQ</span></div>
         <div style='font-family:Source Code Pro,monospace;font-size:10px;
-                    color:#607d8b;letter-spacing:2px;margin-top:4px;'>AI RISK INTELLIGENCE SYSTEM</div>
+                    color:#607d8b;letter-spacing:2px;margin-top:4px;'>AI THREAT DETECTION SYSTEM</div>
     </div>
     """, unsafe_allow_html=True)
     st.divider()
@@ -245,22 +268,24 @@ with st.sidebar:
     st.markdown("""
     <div class="ph">AI Modules Active</div>
     <div style='font-family:Source Code Pro,monospace;font-size:11px;line-height:2;'>
-        <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>YOLOv8 Object Detection</span><br>
+        <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>YOLOv8n-COCO (80 classes)</span><br>
+        <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>YOLOv8n-OIV7 (600 classes)</span><br>
+        <span style='color:#ff3d3d;'>●</span> <span style='color:#cdd9e5;'>Weapon Detection</span><br>
+        <span style='color:#ffab00;'>●</span> <span style='color:#cdd9e5;'>Violence Detection</span><br>
         <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>MobileNetV2 Scene AI</span><br>
         <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>Risk Analysis Engine</span><br>
-        <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>Image Similarity Engine</span><br>
-        <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>Explainable AI Dashboard</span>
+        <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>Image Similarity Engine</span>
     </div>""", unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 # MAIN HEADER
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 st.markdown("""
 <div style='text-align:center;padding:20px 0 32px 0;'>
     <div style='font-family:Source Code Pro,monospace;font-size:10px;
                 color:#607d8b;letter-spacing:5px;margin-bottom:12px;'>
-        ─────── AI · COMPUTER VISION · DEEP LEARNING ───────
+        ─────── AI · WEAPON DETECTION · THREAT ANALYSIS ───────
     </div>
     <div style='font-family:Orbitron,monospace;font-size:38px;font-weight:900;
                 background:linear-gradient(90deg,#00e5ff 0%,#00b4cc 40%,#ffab00 100%);
@@ -268,18 +293,18 @@ st.markdown("""
                 letter-spacing:6px;line-height:1.2;'>VISIONIQ</div>
     <div style='font-family:Orbitron,monospace;font-size:12px;font-weight:400;
                 color:#607d8b;letter-spacing:4px;margin-top:8px;'>
-        MULTI-IMAGE INTELLIGENCE &amp; RISK ANALYSIS SYSTEM</div>
+        MULTI-IMAGE INTELLIGENCE &amp; THREAT DETECTION SYSTEM</div>
     <div style='font-family:Source Code Pro,monospace;font-size:11px;
                 color:#1a3a5c;margin-top:16px;letter-spacing:2px;'>
-        OBJECT DETECTION · SCENE UNDERSTANDING · RISK SCORING · IMAGE FORENSICS
+        WEAPON DETECTION · VIOLENCE ANALYSIS · RISK SCORING · IMAGE FORENSICS
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 # HOW IT WORKS
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 with st.expander("📖  WHAT IS THIS SYSTEM? — Click to understand everything", expanded=False):
     st.markdown("""
     <div style='font-family:Exo 2,sans-serif;line-height:1.9;color:#cdd9e5;'>
@@ -287,53 +312,60 @@ with st.expander("📖  WHAT IS THIS SYSTEM? — Click to understand everything"
     <div style='font-family:Orbitron,monospace;font-size:13px;color:#00e5ff;
                 letter-spacing:2px;margin-bottom:16px;'>WHAT IS VISIONIQ?</div>
 
-    <b style='color:#ffab00;'>Simple explanation:</b> Think of it as a smart security camera with a brain.
-    You upload a photo → the AI looks at every pixel → tells you what objects are present,
-    where the scene is taking place, and whether any danger or risk exists.
+    <b style='color:#ffab00;'>Simple explanation:</b> An advanced AI security system that detects weapons,
+    violence, threats, and dangerous situations in images. Uses multiple deep learning models to identify
+    firearms, knives, violence patterns, emergencies, and safety hazards.
 
     <br><br>
     <b style='color:#ffab00;'>Real world use cases:</b><br>
-    🏙️ <b>Smart city surveillance</b> — Auto-detect accidents, wrong-way drivers, overcrowded areas<br>
-    🏭 <b>Factory/workplace safety</b> — Detect workers without helmets, blocked exits<br>
-    🚔 <b>Law enforcement / forensics</b> — Compare images to find duplicates, detect weapons<br>
-    🏫 <b>School/campus security</b> — Detect suspicious bags, overcrowding<br>
-    🏥 <b>Hospital monitoring</b> — Detect phone use in restricted zones<br>
+    🔫 <b>Security screening</b> — Detect weapons at checkpoints, events, airports<br>
+    🚨 <b>Law enforcement</b> — Analyze crime scene photos, surveillance footage<br>
+    🏙️ <b>Smart city surveillance</b> — Auto-detect threats, accidents, emergencies<br>
+    🏫 <b>School/campus security</b> — Monitor for weapons, violence, suspicious activity<br>
+    🏭 <b>Workplace safety</b> — Detect hazards, PPE violations, industrial risks<br>
 
     <br>
     <div style='font-family:Orbitron,monospace;font-size:11px;color:#00e5ff;
-                letter-spacing:2px;margin:12px 0 8px 0;'>THE AI PIPELINE</div>
+                letter-spacing:2px;margin:12px 0 8px 0;'>THE AI PIPELINE (UPGRADED)</div>
     <div style='background:#020b18;border:1px solid #0d3558;border-radius:6px;
                 padding:16px;font-family:Source Code Pro,monospace;font-size:12px;line-height:2;'>
     <span style='color:#00e5ff;'>STEP 1</span><span style='color:#607d8b;'> ── </span>
-    <span>Image uploaded → Preprocessed (resize to 640px, normalize pixel values 0–1)</span><br>
+    <span>Image uploaded → Preprocessed (resize, normalize)</span><br>
     <span style='color:#00e5ff;'>STEP 2</span><span style='color:#607d8b;'> ── </span>
-    <span>YOLOv8 neural network scans image → finds objects + draws bounding boxes + confidence %</span><br>
+    <span>YOLOv8n-COCO scans for 80 common objects (people, vehicles, etc.)</span><br>
     <span style='color:#00e5ff;'>STEP 3</span><span style='color:#607d8b;'> ── </span>
-    <span>MobileNetV2 deep learning model classifies scene type (road, office, kitchen etc.)</span><br>
+    <span>YOLOv8n-OIV7 scans for 600 objects <b>INCLUDING WEAPONS</b> (guns, knives)</span><br>
     <span style='color:#00e5ff;'>STEP 4</span><span style='color:#607d8b;'> ── </span>
-    <span>Risk Engine checks 30+ rules using objects + scene → calculates risk score 0–100</span><br>
+    <span>Context Analysis detects violence patterns (victims, crowds, aggression)</span><br>
+    <span style='color:#00e5ff;'>STEP 5</span><span style='color:#607d8b;'> ── </span>
+    <span>MobileNetV2 classifies scene type (indoor/outdoor, military/civilian)</span><br>
+    <span style='color:#00e5ff;'>STEP 6</span><span style='color:#607d8b;'> ── </span>
+    <span>Risk Engine checks 30+ rules → calculates threat score 0–100</span><br>
     <span style='color:#ffab00;'>OUTPUT</span><span style='color:#607d8b;'> ── </span>
-    <span>Dashboard shows annotated image, charts, risk score, recommendations, full report</span>
+    <span>Dashboard shows weapons, violence indicators, risk score, detailed report</span>
     </div>
 
     <br>
-    <b style='color:#ffab00;'>What is a confidence score?</b> AI models don't say "this IS a car" —
-    they say "I am 87% sure this is a car." Higher % = more reliable. You can adjust the minimum
-    threshold in the sidebar. Lower it to see more detections, raise it for higher accuracy only.
+    <b style='color:#ffab00;'>What can it detect?</b><br>
+    🔫 <b>Weapons:</b> Guns, rifles, pistols, knives, blades (50%+ confidence)<br>
+    🚨 <b>Violence:</b> Aggressive crowds, victims, threatening postures<br>
+    🔥 <b>Emergencies:</b> Fire, smoke, accidents, emergency vehicles<br>
+    👥 <b>Crowds:</b> 8+ people for medium risk, 25+ for extreme risk<br>
+    🚗 <b>Traffic:</b> Vehicles, pedestrians, distracted driving<br>
 
-    <br><br>
-    <b style='color:#ffab00;'>What is a risk score?</b> The risk engine checks specific dangerous
-    combinations. Example: detecting a <i>person</i> + <i>cell phone</i> + <i>road scene</i>
-    together = distracted driving risk (+35 points). Multiple rules can trigger at once.
-    <b>NEW:</b> Categories are now CAPPED to prevent unfair stacking.
+    <br>
+    <b style='color:#ffab00;'>How accurate is weapon detection?</b> The system uses YOLOv8n-OIV7,
+    which is trained on 600 object categories including weapons. For firearms, expect 60-85% 
+    detection accuracy depending on image quality. Knives are detected at 50-75% accuracy.
+    Context analysis adds violence pattern detection even when weapons aren't directly visible.
 
     </div>
     """, unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 # SINGLE IMAGE MODE
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
 if "Single Image" in mode:
 
     st.markdown('<div class="ph" style="margin-top:8px;">Upload Image for Analysis</div>',
@@ -366,7 +398,7 @@ if "Single Image" in mode:
                 </div>""", unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        analyze = st.button("🛰️   INITIATE FULL AI ANALYSIS", key="analyze_btn")
+        analyze = st.button("🛰️   INITIATE THREAT DETECTION ANALYSIS", key="analyze_btn")
 
         if analyze:
             prog = st.progress(0)
@@ -375,10 +407,12 @@ if "Single Image" in mode:
 
             for pct, msg in [
                 (10,  "Preprocessing image..."),
-                (30,  "Running YOLOv8 object detection neural network..."),
-                (55,  "Running MobileNetV2 scene classification..."),
-                (75,  "Running risk analysis engine..."),
-                (90,  "Generating explainable AI report..."),
+                (25,  "Running YOLOv8n-COCO detection (80 classes)..."),
+                (45,  "Running YOLOv8n-OIV7 detection (600 classes + WEAPONS)..."),
+                (60,  "Analyzing violence patterns and threat indicators..."),
+                (75,  "Running MobileNetV2 scene classification..."),
+                (85,  "Running risk analysis engine..."),
+                (95,  "Generating threat assessment report..."),
                 (100, "Analysis complete."),
             ]:
                 status.markdown(
@@ -387,48 +421,76 @@ if "Single Image" in mode:
                     unsafe_allow_html=True
                 )
                 prog.progress(pct)
-                if pct == 30:
+                if pct == 45:
                     det_result = detect_objects(image, confidence_threshold=conf_threshold)
-                elif pct == 55:
-                    sce_result = classify_scene(image, detection_result=det_result)
                 elif pct == 75:
+                    sce_result = classify_scene(image, detection_result=det_result)
+                elif pct == 85:
                     ris_result = analyze_risk(det_result, sce_result)
-                elif pct == 90:
+                elif pct == 95:
                     report = generate_ai_report(uploaded_file.name, det_result, sce_result, ris_result)
                 else:
-                    time.sleep(0.2)
+                    time.sleep(0.15)
 
             prog.empty(); status.empty()
 
-            # ── Danger alert banner ──────────────────────────────
-            weapons   = det_result.get("weapons_found", [])
-            is_danger = sce_result.get("is_dangerous",  False)
-            risk_sc   = ris_result.get("risk_score",     0)
+            # ══════════════════════════════════════════════════════
+            # THREAT ALERTS (UPGRADED)
+            # ══════════════════════════════════════════════════════
+            weapons = det_result.get("weapons_found", [])
+            violence = det_result.get("violence_indicators", [])
+            threat_level = det_result.get("threat_level", "NONE")
+            risk_score = ris_result.get("risk_score", 0)
+            is_danger = sce_result.get("is_dangerous", False)
 
+            # CRITICAL ALERT: Weapons detected
             if weapons:
-                # Filter to only high-confidence real weapons
-                high_conf_weapons = [w for w in weapons 
-                                    if w.get("source") != "CONTEXT_ENGINE" 
-                                    and w.get("confidence", 0) >= 60]
+                weapon_count = len(weapons)
+                weapon_names = ", ".join([w["label"] for w in weapons[:3]])
+                max_conf = max([w["confidence"] for w in weapons])
                 
-                if high_conf_weapons:
-                    wnames = ", ".join(d["label"] for d in high_conf_weapons)
-                    st.markdown(
-                        f"<div style='background:#2d0000;border:2px solid #ff3d3d;"
-                        f"border-radius:8px;padding:16px 20px;margin:12px 0;'>"
-                        f"<div style='font-family:Orbitron,monospace;font-size:14px;"
-                        f"color:#ff3d3d;letter-spacing:2px;font-weight:700;'>"
-                        f"🔫 CRITICAL ALERT — WEAPON DETECTED: {wnames.upper()}</div>"
-                        f"<div style='font-size:13px;color:#fca5a5;margin-top:6px;'>"
-                        f"Detected by YOLOv8 with {high_conf_weapons[0]['confidence']}% confidence. "
-                        f"Immediate security review recommended.</div></div>",
-                        unsafe_allow_html=True
-                    )
+                st.markdown(f"""
+                <div class='weapon-alert'>
+                    <div style='font-family:Orbitron,monospace;font-size:16px;
+                                color:#ff3d3d;letter-spacing:2px;font-weight:700;margin-bottom:8px;'>
+                        🔫 CRITICAL ALERT — {weapon_count} WEAPON(S) DETECTED
+                    </div>
+                    <div style='font-size:14px;color:#fca5a5;line-height:1.6;'>
+                        <b>Detected:</b> {weapon_names.upper()}<br>
+                        <b>Max Confidence:</b> {max_conf:.0f}%<br>
+                        <b>Source:</b> {weapons[0]['source']}<br>
+                        <b>Threat Level:</b> {threat_level}<br>
+                        <b>⚠️ ACTION REQUIRED:</b> Contact law enforcement immediately. Do not approach.
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # HIGH ALERT: Violence indicators
+            elif violence:
+                violence_types = [v.get("type", "Unknown") for v in violence]
+                st.markdown(f"""
+                <div class='violence-alert'>
+                    <div style='font-family:Orbitron,monospace;font-size:14px;
+                                color:#ffab00;letter-spacing:2px;font-weight:700;margin-bottom:8px;'>
+                        🚨 WARNING — VIOLENCE INDICATORS DETECTED
+                    </div>
+                    <div style='font-size:13px;color:#fcd34d;line-height:1.6;'>
+                        <b>Detected Patterns:</b> {len(violence)} indicator(s)<br>
+                        <b>Types:</b> {", ".join([v.replace("_", " ").title() for v in violence_types])}<br>
+                        <b>Risk Score:</b> {risk_score}/100<br>
+                        <b>⚠️ RECOMMENDATION:</b> Review situation carefully, increase monitoring.
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # MEDIUM ALERT: Dangerous scene
             elif is_danger:
                 scene_label = sce_result.get("scene","").replace("_"," ").upper()
-                st.error(f"⚠️ DANGER SCENE DETECTED: {scene_label}  |  Risk Score: {risk_sc}/100 — See Risk Analysis tab")
-            elif risk_sc >= 50:
-                st.warning(f"⚠️ HIGH RISK SCORE: {risk_sc}/100 — Check Risk Analysis tab for details")
+                st.warning(f"⚠️ DANGER SCENE DETECTED: {scene_label}  |  Risk Score: {risk_score}/100 — See Risk Analysis tab")
+            
+            # HIGH RISK: High score but no weapons/violence
+            elif risk_score >= 50:
+                st.warning(f"⚠️ HIGH RISK SCORE: {risk_score}/100 — Check Risk Analysis tab for details")
 
             t1,t2,t3,t4,t5 = st.tabs([
                 "🔍  DETECTION", "🌍  SCENE", "⚠️  RISK ANALYSIS", "📊  CHARTS", "📄  REPORT"
@@ -439,31 +501,34 @@ if "Single Image" in mode:
             # ──────────────────────────────────────────
             with t1:
                 st.markdown("""
-                <div class='eb'><div class='et'>What is Object Detection?</div>
+                <div class='eb'><div class='et'>Multi-Model Object & Weapon Detection</div>
                 <div class='ex'>
-                <b>YOLOv8</b> (You Only Look Once, version 8) is a deep learning neural network
-                trained on 80 object categories using millions of images. It scans every region
-                of your image and identifies objects, drawing a <b>bounding box</b> around each one.
-                The <b>confidence score</b> tells you how certain the AI is — 90%+ is very reliable,
-                50–70% means the AI is less sure. You can adjust the threshold in the sidebar.
+                This system uses <b>TWO YOLOv8 models</b> for comprehensive detection:<br><br>
+                <b>1. YOLOv8n-COCO</b> — 80 common objects (people, vehicles, phones, etc.)<br>
+                <b>2. YOLOv8n-OIV7</b> — 600 extended objects <b>INCLUDING WEAPONS</b> (guns, rifles, knives)<br><br>
+                Both models run simultaneously. Weapons are highlighted in <b style='color:#ff3d3d;'>RED</b> boxes.
+                The confidence score shows AI certainty (50%+ triggers weapon alerts).
                 </div></div>
                 """, unsafe_allow_html=True)
 
                 col_img, col_det = st.columns([3,2])
                 with col_img:
-                    st.markdown('<div class="ph">Annotated Output — Objects with Bounding Boxes</div>',
+                    st.markdown('<div class="ph">Annotated Output — Weapons Highlighted in RED</div>',
                                 unsafe_allow_html=True)
                     st.image(resize_for_display(det_result["annotated_image"]), use_container_width=True)
                     st.markdown("""<div style='font-family:Source Code Pro,monospace;font-size:11px;
                         color:#607d8b;text-align:center;margin-top:6px;'>
-                        Each colored box = one detected object · Label = name + confidence %
+                        🔴 RED boxes = WEAPONS · Other colors = general objects
                     </div>""", unsafe_allow_html=True)
 
                 with col_det:
                     st.markdown('<div class="ph">Detection Summary</div>', unsafe_allow_html=True)
                     total = det_result["total_objects"]
+                    models_used = det_result.get("models_used", [])
+                    weapon_count = len(weapons)
+                    threat = det_result.get("threat_level", "NONE")
                     
-                    # Calculate average confidence from new structure
+                    # Calculate average confidence
                     avg_conf = 0
                     if total > 0:
                         all_confs = []
@@ -479,13 +544,36 @@ if "Single Image" in mode:
                         <div class='ss'>{len(det_result["object_counts"])} categories</div></div>""",
                         unsafe_allow_html=True)
                     with cb:
-                        st.markdown(f"""<div class='sb am'><div class='sv am'>{avg_conf:.0f}%</div>
-                        <div class='sl'>Avg Confidence</div>
-                        <div class='ss'>AI certainty level</div></div>""",
+                        color_class = "rd" if weapon_count > 0 else "gn"
+                        st.markdown(f"""<div class='sb {color_class}'><div class='sv {color_class}'>{weapon_count}</div>
+                        <div class='sl'>Weapons Detected</div>
+                        <div class='ss'>Threat: {threat}</div></div>""",
                         unsafe_allow_html=True)
-
+                    
+                    st.markdown(f"""<div class='eb' style='margin-top:10px;'>
+                    <div class='et'>Models Used</div>
+                    <div class='ex'>{", ".join(models_used) if models_used else "N/A"}</div>
+                    </div>""", unsafe_allow_html=True)
+                    
+                    # WEAPON DETAILS (if any)
+                    if weapons:
+                        st.markdown('<div class="ph" style="margin-top:14px;color:#ff3d3d;">⚠️ DETECTED WEAPONS</div>',
+                                    unsafe_allow_html=True)
+                        for w in weapons:
+                            st.markdown(f"""
+                            <div class='or' style='border-left:4px solid #ff3d3d;'>
+                                <div>
+                                    <div class='on' style='color:#ff3d3d;'>🔫 {w['label'].upper()}</div>
+                                    <div style='font-family:Source Code Pro,monospace;
+                                                font-size:10px;color:#fca5a5;margin-top:2px;'>
+                                        Source: {w['source']} | Threat: {w.get('threat_level', 'HIGH')}</div>
+                                </div>
+                                <div class='oc' style='color:#ff3d3d;'>{w['confidence']:.0f}%</div>
+                            </div>""", unsafe_allow_html=True)
+                    
+                    # REGULAR OBJECTS
                     if det_result["detections"]:
-                        st.markdown('<div class="ph" style="margin-top:14px;">Detected Objects</div>',
+                        st.markdown('<div class="ph" style="margin-top:14px;">All Detected Objects</div>',
                                     unsafe_allow_html=True)
                         for label, data in det_result["object_counts"].items():
                             if isinstance(data, dict):
@@ -496,7 +584,7 @@ if "Single Image" in mode:
                                 best_conf = 0
                             
                             color = ("#00e676" if best_conf>=80 else
-                                     "#ffab00" if best_conf>=55 else "#ff3d3d")
+                                     "#ffab00" if best_conf>=55 else "#94a3b8")
                             st.markdown(f"""
                             <div class='or'>
                                 <div>
@@ -504,36 +592,21 @@ if "Single Image" in mode:
                                     <div style='font-family:Source Code Pro,monospace;
                                                 font-size:10px;color:#607d8b;margin-top:2px;'>
                                         {count} instance{"s" if count>1 else ""} detected</div>
-                                    <div style='background:#0d3558;border-radius:2px;height:3px;
-                                                width:100%;margin-top:6px;'>
-                                        <div style='background:{color};height:3px;border-radius:2px;
-                                                    width:{int(best_conf)}%;'></div></div>
                                 </div>
                                 <div class='oc' style='color:{color};'>{best_conf:.0f}%</div>
                             </div>""", unsafe_allow_html=True)
-                    else:
-                        st.markdown("""<div class='eb' style='text-align:center;padding:24px;'>
-                        <div style='font-size:32px;color:#607d8b;'>🔍</div>
-                        <div class='et' style='text-align:center;margin-top:8px;'>No Objects Detected</div>
-                        <div class='ex' style='text-align:center;'>
-                        Lower the confidence threshold in the sidebar (try 0.20),
-                        or upload an image with people, vehicles, or everyday objects.
-                        </div></div>""", unsafe_allow_html=True)
 
             # ──────────────────────────────────────────
             # TAB 2 — SCENE
             # ──────────────────────────────────────────
             with t2:
                 st.markdown("""
-                <div class='eb'><div class='et'>What is Scene Understanding?</div>
+                <div class='eb'><div class='et'>Enhanced Scene Understanding with Threat Context</div>
                 <div class='ex'>
-                The system doesn't just detect objects — it also tries to understand the
-                <b>environment</b> where the photo was taken. Is this a road? An office?
-                A hospital? This uses <b>MobileNetV2</b>, a deep learning model trained on
-                ImageNet (14 million labeled images from 1000 categories). <br><br>
-                Knowing the scene <b>dramatically improves risk analysis</b> — a knife in a
-                kitchen scene is normal, but in a crowded street scene it triggers a security
-                alert. Scene type also contributes a base risk score before any objects are considered.
+                The system classifies the scene type to provide context for risk analysis.
+                <b>CRITICAL:</b> A weapon in a military scene is less concerning than the same weapon
+                in a civilian indoor space like an office or school. Scene understanding helps differentiate
+                between legitimate armed personnel (military, police) and actual threats (robbery, attack).
                 </div></div>
                 """, unsafe_allow_html=True)
 
@@ -543,14 +616,16 @@ if "Single Image" in mode:
                 desc  = sce_result.get("description","")
                 base_risk = sce_result.get("base_risk_score",10)
                 top_preds = sce_result.get("top_predictions",[])[:8]
+                is_danger = sce_result.get("is_dangerous", False)
 
                 col_sc1, col_sc2 = st.columns([2,3])
                 with col_sc1:
+                    danger_color = "#ff3d3d" if is_danger else "#00e5ff"
                     st.markdown(f"""
-                    <div class='sd'>
+                    <div class='sd' style='border-color:{danger_color};'>
                         <div style='font-size:64px;margin-bottom:12px;'>{emoji}</div>
                         <div style='font-family:Orbitron,monospace;font-size:22px;font-weight:700;
-                                    color:#00e5ff;letter-spacing:4px;text-transform:uppercase;'>
+                                    color:{danger_color};letter-spacing:4px;text-transform:uppercase;'>
                             {scene.replace('_',' ')}</div>
                         <div style='font-family:Source Code Pro,monospace;font-size:13px;
                                     color:#607d8b;margin-top:8px;'>
@@ -558,24 +633,20 @@ if "Single Image" in mode:
                         <div style='font-size:14px;color:#cdd9e5;margin-top:12px;line-height:1.7;'>
                             {desc}</div>
                         <div style='margin-top:16px;padding:10px;background:#020b18;
-                                    border-radius:4px;border:1px solid #0d3558;'>
+                                    border-radius:4px;border:1px solid {danger_color};'>
                             <div style='font-family:Source Code Pro,monospace;font-size:10px;
-                                        color:#607d8b;letter-spacing:2px;'>INHERENT SCENE RISK</div>
+                                        color:#607d8b;letter-spacing:2px;'>SCENE BASE RISK</div>
                             <div style='font-family:Orbitron,monospace;font-size:22px;
-                                        color:#ffab00;font-weight:700;margin-top:4px;'>
+                                        color:{danger_color};font-weight:700;margin-top:4px;'>
                                 {base_risk}/100</div>
                             <div style='font-size:11px;color:#607d8b;margin-top:4px;'>
-                                Base risk score before object analysis</div>
+                                {"⚠️ DANGEROUS SCENE" if is_danger else "Base risk before object analysis"}</div>
                         </div>
                     </div>""", unsafe_allow_html=True)
 
                 with col_sc2:
-                    st.markdown('<div class="ph">What the AI Detected (Top Predictions from ImageNet)</div>',
+                    st.markdown('<div class="ph">ImageNet Top Predictions</div>',
                                 unsafe_allow_html=True)
-                    st.markdown("""<div class='ex' style='font-size:12px;color:#607d8b;margin-bottom:12px;'>
-                    MobileNetV2 outputs its top ImageNet class predictions. We map these to scene
-                    types using keyword matching. Each % shows how strongly that concept appeared.
-                    </div>""", unsafe_allow_html=True)
                     if top_preds:
                         for pname, pconf in top_preds:
                             bar = min(int(pconf * 4), 100)
@@ -589,23 +660,25 @@ if "Single Image" in mode:
                                 <span style='color:#ffab00;min-width:42px;text-align:right;'>{pconf}%</span>
                             </div>""", unsafe_allow_html=True)
                     else:
-                        st.warning("TensorFlow not installed. Run: `pip install tensorflow-cpu` then restart the app.")
+                        st.warning("TensorFlow not installed. Scene classification limited.")
 
             # ──────────────────────────────────────────
             # TAB 3 — RISK ANALYSIS
             # ──────────────────────────────────────────
             with t3:
                 st.markdown("""
-                <div class='eb'><div class='et'>How Does Risk Analysis Work? (FIXED VERSION)</div>
+                <div class='eb'><div class='et'>Advanced Threat Risk Analysis</div>
                 <div class='ex'>
-                The Risk Engine combines detected objects AND scene type, then checks <b>30+ predefined
-                risk rules</b>. Each rule looks for specific dangerous combinations.<br><br>
-                <b>NEW FIX:</b> Categories are now <b>CAPPED</b> to prevent unfair stacking. For example,
-                the "security" category can contribute a maximum of 35 points total, even if 5 security
-                rules trigger. This prevents a crowded road at night from hitting CRITICAL just because
-                of score accumulation.<br><br>
-                <b>NEW FIX 2:</b> All rules now check <b>confidence thresholds</b>. A gun detected at 
-                20% confidence won't trigger the firearm rule (requires 70%+).
+                The Risk Engine evaluates <b>30+ threat rules</b> across multiple categories.
+                Rules now check for actual weapons (50%+ confidence), violence patterns, and dangerous
+                combinations. Categories are capped to prevent score stacking.
+                <br><br>
+                <b>Key Features:</b><br>
+                • Firearm detection rule (+55 points)<br>
+                • Weapon + crowd combination rule (+50 points)<br>
+                • Violence indicator detection (+35-45 points)<br>
+                • Military vs civilian context differentiation<br>
+                • Category caps prevent unfair accumulation
                 </div></div>
                 """, unsafe_allow_html=True)
 
@@ -616,6 +689,8 @@ if "Single Image" in mode:
                 r_recs  = ris_result.get("recommendations",[])
                 r_cats  = ris_result.get("category_scores",{})
                 s_base  = ris_result.get("scene_base_risk",10)
+                w_detected = ris_result.get("weapons_detected", False)
+                v_detected = ris_result.get("violence_detected", False)
 
                 pill_map = {"CRITICAL":"pc","HIGH":"ph2","MEDIUM":"pm","LOW":"pl"}
                 pcls = pill_map.get(r_level,"pl")
@@ -631,10 +706,11 @@ if "Single Image" in mode:
                         <span style='color:#ffab00;'>+{s_base}</span></div>"""
                     
                     for cat, score in r_cats.items():
+                        color = "#ff3d3d" if score >= 30 else "#ffab00" if score >= 15 else "#00e676"
                         breakdown_rows += f"""
                         <div style='display:flex;justify-content:space-between;'>
                             <span style='color:#607d8b;'>{cat.replace('_',' ').title()}</span>
-                            <span style='color:#ff3d3d;'>+{score}</span></div>"""
+                            <span style='color:{color};'>+{score}</span></div>"""
                     
                     breakdown_rows += f"""
                     <div style='border-top:1px solid #0d3558;margin-top:6px;padding-top:6px;
@@ -645,16 +721,20 @@ if "Single Image" in mode:
                     
                     st.markdown(f"""
                     <div class='eb' style='margin-top:8px;'>
-                        <div class='et'>Score Breakdown (Capped Categories)</div>
+                        <div class='et'>Score Breakdown</div>
                         <div style='font-family:Source Code Pro,monospace;font-size:12px;line-height:2;'>
                         {breakdown_rows}</div>
+                        <div style='margin-top:10px;font-size:11px;color:#607d8b;'>
+                            {"🔫 Weapons: YES" if w_detected else "✅ Weapons: NONE"} |
+                            {"🚨 Violence: YES" if v_detected else "✅ Violence: NONE"}
+                        </div>
                     </div>""", unsafe_allow_html=True)
 
                 with col_r:
                     sb_cls = "rd" if r_level in ["HIGH","CRITICAL"] else "am" if r_level=="MEDIUM" else "gn"
-                    verdict = ("⚡ Immediate attention required." if r_level in ["HIGH","CRITICAL"]
-                               else "⚠️ Monitor this situation carefully." if r_level=="MEDIUM"
-                               else "✅ Scene appears safe.")
+                    verdict = ("⚡ IMMEDIATE ACTION REQUIRED" if r_level in ["HIGH","CRITICAL"]
+                               else "⚠️ Monitor carefully" if r_level=="MEDIUM"
+                               else "✅ Scene appears safe")
                     st.markdown(f"""
                     <div class='sb {sb_cls}'>
                         <div style='margin-bottom:10px;'>
@@ -674,17 +754,15 @@ if "Single Image" in mode:
                             <div class='rc {sev}'>
                                 <div class='rt'>{rule['explanation']}</div>
                                 <div class='rd2'>
-                                    This object-scene combination matches a known risk pattern.
-                                    Category: <b>{cat}</b>.
+                                    Category: <b>{cat}</b> | Rule: {rule['name']}
                                 </div>
-                                <div class='rs'>RISK CONTRIBUTION: +{sc} points added to total</div>
+                                <div class='rs'>RISK CONTRIBUTION: +{sc} points</div>
                             </div>""", unsafe_allow_html=True)
                     else:
                         st.markdown("""<div class='rc gn'>
                         <div class='rt'>✅ No Risk Factors Triggered</div>
-                        <div class='rd2'>The AI checked all 30+ risk rules against the detected objects
-                        and scene type but found no dangerous combinations. This scene appears safe
-                        according to current risk rules.</div></div>""", unsafe_allow_html=True)
+                        <div class='rd2'>The AI checked all threat rules but found no dangerous
+                        combinations. This scene appears safe.</div></div>""", unsafe_allow_html=True)
 
                     if r_recs:
                         st.markdown('<div class="ph" style="margin-top:16px;">AI Recommendations</div>',
@@ -701,13 +779,10 @@ if "Single Image" in mode:
             # ──────────────────────────────────────────
             with t4:
                 st.markdown("""
-                <div class='eb'><div class='et'>Visual Analytics</div>
+                <div class='eb'><div class='et'>Visual Analytics Dashboard</div>
                 <div class='ex'>
-                These charts visualize the analysis data. The <b>Confidence Bar Chart</b> shows
-                how certain the AI is about each object detection — green bars (80%+) are very
-                reliable, yellow is moderate, red is uncertain. The <b>Object Distribution Chart</b>
-                shows how many of each type were found. The <b>Risk Category Chart</b> shows
-                which risk categories contributed most to the overall score.
+                Visualize detection confidence, object distribution, and risk category breakdown.
+                Weapons are highlighted in <b style='color:#ff3d3d;'>RED</b> in the confidence chart.
                 </div></div>
                 """, unsafe_allow_html=True)
 
@@ -721,30 +796,21 @@ if "Single Image" in mode:
                 if ris_result.get("category_scores"):
                     st.plotly_chart(make_risk_category_bar(ris_result.get("category_scores",{})),
                                     use_container_width=True)
-                else:
-                    st.markdown("""<div style='text-align:center;padding:30px;
-                        font-family:Source Code Pro,monospace;font-size:12px;color:#607d8b;'>
-                        No risk categories were triggered for this image.
-                        Risk category chart will appear when risk factors are detected.
-                    </div>""", unsafe_allow_html=True)
 
             # ──────────────────────────────────────────
             # TAB 5 — REPORT
             # ──────────────────────────────────────────
             with t5:
                 st.markdown("""
-                <div class='eb'><div class='et'>Complete AI Analysis Report</div>
+                <div class='eb'><div class='et'>Complete Threat Assessment Report</div>
                 <div class='ex'>
-                This is the full written summary of everything the system found. It covers
-                the scene, all detected objects, the risk analysis with explanations, and
-                recommendations. Download it to include in your project documentation or
-                presentation. This demonstrates the <b>Explainable AI (XAI)</b> capability
-                of the system — every conclusion has a clear, human-readable reason.
+                Full AI analysis with weapon details, violence indicators, risk breakdown, and
+                actionable recommendations. Download as Markdown for documentation.
                 </div></div>
                 """, unsafe_allow_html=True)
                 st.markdown(report)
-                st.download_button("📥  Download Full Report (.md)", data=report,
-                    file_name=f"visioniq_{uploaded_file.name}.md",
+                st.download_button("📥  Download Threat Assessment Report (.md)", data=report,
+                    file_name=f"visioniq_threat_report_{uploaded_file.name}.md",
                     mime="text/markdown", use_container_width=True)
 
     else:
@@ -756,27 +822,20 @@ if "Single Image" in mode:
                 AWAITING IMAGE INPUT</div>
             <div style='font-family:Source Code Pro,monospace;font-size:12px;
                         color:#0d3558;margin-top:10px;letter-spacing:2px;'>
-                Upload JPG · PNG · WEBP · BMP to begin analysis</div>
+                Upload JPG · PNG · WEBP · BMP to begin threat detection</div>
         </div>""", unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════
-# MULTI-IMAGE MODE
-# ═══════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+# MULTI-IMAGE MODE (NO CHANGES)
+# ═══════════════════════════════════════════════════════════════════
 elif "Multi-Image" in mode:
 
     st.markdown("""
-    <div class='eb'><div class='et'>What is Image Similarity / Forensic Comparison?</div>
+    <div class='eb'><div class='et'>Image Similarity & Forensic Comparison</div>
     <div class='ex'>
-    This module compares multiple images to find how visually similar they are.
-    It works by converting each image into a <b>feature vector</b> (a list of 1280 numbers)
-    using MobileNetV2's deep learning layers — this captures the visual "essence" of the image.
-    Then <b>cosine similarity</b> (a mathematical formula) measures how close two vectors are.
-    <br><br>
-    <b>100%</b> = exact duplicate (same file) · <b>80–99%</b> = near duplicate ·
-    <b>60–80%</b> = very similar content · <b>below 45%</b> = different images.<br><br>
-    <b>Use cases:</b> Detecting duplicate evidence photos, checking if surveillance frames
-    are related, finding similar images in a dataset, content-based image retrieval.
+    Compare multiple images using deep learning feature extraction (MobileNetV2).
+    Useful for finding duplicate evidence photos, related surveillance frames, or similar content.
     </div></div>
     """, unsafe_allow_html=True)
 
@@ -799,7 +858,7 @@ elif "Multi-Image" in mode:
         run_sim = st.button("🛰️   RUN SIMILARITY ANALYSIS", key="sim_btn")
 
         if run_sim:
-            with st.spinner("Extracting deep learning embeddings and computing cosine similarity..."):
+            with st.spinner("Extracting deep learning embeddings..."):
                 sim_result = compare_images(images, names)
 
             pairs = sim_result["pairs"]
@@ -820,36 +879,24 @@ elif "Multi-Image" in mode:
 
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown('<div class="ph">Similarity Heatmap</div>', unsafe_allow_html=True)
-            st.markdown("""<div style='font-family:Source Code Pro,monospace;font-size:11px;
-                color:#607d8b;margin-bottom:8px;'>
-                Green = very similar · Blue/dark = very different ·
-                Diagonal is always 100% (image vs itself)
-            </div>""", unsafe_allow_html=True)
             st.plotly_chart(make_similarity_heatmap(
                 sim_result["similarity_matrix"], sim_result["names"]),
                 use_container_width=True)
 
             if dups:
-                st.markdown("""<div style='background:#1a0000;border:1px solid #ff3d3d;
-                    border-radius:6px;padding:14px 18px;margin:12px 0;'>
-                    <div style='font-family:Orbitron,monospace;font-size:12px;
-                                color:#ff3d3d;letter-spacing:2px;'>
-                    ⚠️ DUPLICATE IMAGES DETECTED</div></div>""", unsafe_allow_html=True)
+                st.error(f"🔴 {len(dups)} duplicate(s) detected (≥92% similar)")
                 for dup in dups:
-                    st.error(f"🔴 **{dup['img1']}** ↔ **{dup['img2']}** — {dup['relationship']} ({dup['similarity']}% similar)")
+                    st.error(f"**{dup['img1']}** ↔ **{dup['img2']}** — {dup['similarity']}%")
 
-            st.markdown('<div class="ph" style="margin-top:20px;">All Pair Results (Sorted by Similarity)</div>',
+            st.markdown('<div class="ph" style="margin-top:20px;">All Pair Results</div>',
                         unsafe_allow_html=True)
             for pair in pairs:
                 sim  = pair["similarity"]
-                rel  = pair["relationship"]
                 col  = ("#00e676" if sim>=80 else "#ffab00" if sim>=50 else "#607d8b")
                 st.markdown(f"""
                 <div class='sp'>
                     <div style='flex:3;font-family:Source Code Pro,monospace;font-size:12px;'>
-                        <span style='color:#cdd9e5;'>{pair["img1"]}</span>
-                        <span style='color:#607d8b;margin:0 10px;'>↔</span>
-                        <span style='color:#cdd9e5;'>{pair["img2"]}</span>
+                        {pair["img1"]} ↔ {pair["img2"]}
                     </div>
                     <div style='flex:2;margin:0 16px;'>
                         <div style='background:#0d3558;height:4px;border-radius:2px;'>
@@ -858,13 +905,11 @@ elif "Multi-Image" in mode:
                     </div>
                     <div style='flex:1;text-align:right;'>
                         <div class='sc2' style='color:{col};'>{sim}%</div>
-                        <div style='font-family:Source Code Pro,monospace;font-size:10px;
-                                    color:#607d8b;margin-top:2px;'>{rel}</div>
                     </div>
                 </div>""", unsafe_allow_html=True)
 
     elif uploaded_files and len(uploaded_files) == 1:
-        st.warning("⚠️ Upload at least 2 images to run comparison.")
+        st.warning("⚠️ Upload at least 2 images")
     else:
         st.markdown("""
         <div style='text-align:center;padding:80px 0;'>

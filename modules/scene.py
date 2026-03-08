@@ -1,13 +1,15 @@
+
+
 """
-scene.py — Scene Classification Engine
-PRODUCTION VERSION: Conservative scene classification with realistic risk scores
-FIX #2: Uses ImageNet appropriately - doesn't over-rely on MobileNetV2 for security scenes
-FIX #5: Base risk scores significantly lowered
+scene.py — Enhanced Scene Classification with Threat Detection
+Uses object detection + ImageNet + visual patterns to understand scenes
+Specially tuned to detect threats, violence, military vs civilian contexts
 """
 
 import numpy as np
 from PIL import Image
-from typing import Optional, Tuple, List
+from typing import Dict, List, Optional, Tuple
+
 
 try:
     import tensorflow as tf
@@ -29,162 +31,111 @@ def get_model():
 
 
 # ═══════════════════════════════════════════════════════════════════
-# SCENE DEFINITIONS WITH REALISTIC BASE RISK SCORES
-# FIX #5: All base scores significantly reduced
+# SCENE DEFINITIONS (UPDATED WITH BETTER RISK SCORES)
 # ═══════════════════════════════════════════════════════════════════
 
 SCENE_DEFINITIONS = {
-    # High-risk scenes (only when truly dangerous objects detected)
-    "violence":       ("🚨", 30, "Potential violence or altercation detected"),
-    "accident":       ("🚗💥", 25, "Vehicle accident scene"),
-    "fire_emergency": ("🔥", 35, "Fire or smoke emergency"),
-    "robbery":        ("🔫", 40, "Armed threat situation detected"),
-    "weapon_threat":  ("⚔️", 35, "Weapons detected in scene"),
+    # High-threat scenes
+    "violence":       ("🚨", 45, "Active violence or physical altercation"),
+    "robbery":        ("🔫", 55, "Armed robbery or threat situation"),
+    "weapon_threat":  ("⚔️", 50, "Weapons detected in threatening context"),
+    "accident":       ("🚗💥", 40, "Vehicle accident or collision"),
+    "fire_emergency": ("🔥", 50, "Fire, smoke, or explosion emergency"),
     
-    # Medium-risk scenes
-    "road":           ("🛣️", 12, "Traffic or road environment"),
-    "crowded_area":   ("👥", 15, "Crowded public space"),
-    "warehouse":      ("🏭", 12, "Industrial or warehouse facility"),
-    "parking":        ("🅿️", 10, "Parking lot or garage"),
-    "night_scene":    ("🌙", 12, "Night-time or low-light scene"),
+    # Medium-threat scenes
+    "road":           ("🛣️", 18, "Traffic or road environment"),
+    "crowded_area":   ("👥", 25, "High crowd density area"),
+    "warehouse":      ("🏭", 20, "Industrial or warehouse facility"),
+    "parking":        ("🅿️", 15, "Parking lot or garage"),
+    "night_scene":    ("🌙", 20, "Night-time or low-light scene"),
     
-    # Low-risk scenes
-    "hospital":       ("🏥", 8, "Medical or healthcare facility"),
-    "office":         ("🏢", 5, "Professional office workspace"),
-    "classroom":      ("🎓", 5, "Educational setting"),
-    "kitchen":        ("🍳", 8, "Kitchen or food preparation area"),
-    "outdoor":        ("🌳", 6, "Outdoor natural environment"),
-    "indoor":         ("🏠", 5, "Indoor residential space"),
+    # Low-threat scenes
+    "hospital":       ("🏥", 12, "Medical or healthcare facility"),
+    "office":         ("🏢", 8, "Professional office workspace"),
+    "classroom":      ("🎓", 8, "Educational setting"),
+    "kitchen":        ("🍳", 12, "Kitchen or food preparation area"),
+    "outdoor":        ("🌳", 10, "Outdoor natural environment"),
+    "indoor":         ("🏠", 8, "Indoor residential space"),
+    "military":       ("🪖", 35, "Military or law enforcement context"),
     
     # Default
-    "unknown":        ("❓", 5, "Scene type could not be determined"),
+    "unknown":        ("❓", 8, "Scene type could not be determined"),
 }
 
 
-# Keyword mappings for ImageNet-to-scene translation
 KEYWORD_SCENE_MAP = {
-    "road": [
-        "traffic", "street", "highway", "crosswalk", "road", 
-        "lane", "cab", "taxi", "intersection"
-    ],
-    "office": [
-        "desk", "monitor", "keyboard", "computer", "laptop", 
-        "chair", "office", "cubicle", "workstation"
-    ],
-    "hospital": [
-        "stretcher", "stethoscope", "syringe", "hospital", 
-        "ambulance", "medical", "clinic"
-    ],
-    "classroom": [
-        "classroom", "blackboard", "school", "lecture", 
-        "whiteboard", "desk", "student"
-    ],
-    "outdoor": [
-        "tree", "grass", "sky", "mountain", "park", "garden", 
-        "forest", "beach", "lake", "river"
-    ],
-    "kitchen": [
-        "kitchen", "stove", "refrigerator", "oven", "microwave", 
-        "sink", "counter"
-    ],
-    "crowded_area": [
-        "crowd", "people", "mall", "market", "stadium", 
-        "concert", "festival", "audience"
-    ],
-    "parking": [
-        "parking", "garage", "lot", "car park"
-    ],
-    "warehouse": [
-        "warehouse", "factory", "industrial", "storage", 
-        "shelf", "forklift", "pallet"
-    ],
-    "indoor": [
-        "room", "living", "bedroom", "hallway", "interior", 
-        "sofa", "couch", "furniture"
-    ],
+    "road": ["traffic", "street", "highway", "crosswalk", "road", "lane", "cab", "taxi"],
+    "office": ["desk", "monitor", "keyboard", "computer", "laptop", "chair", "office"],
+    "hospital": ["stretcher", "stethoscope", "syringe", "hospital", "ambulance", "medical"],
+    "classroom": ["classroom", "blackboard", "school", "lecture", "whiteboard"],
+    "outdoor": ["tree", "grass", "sky", "mountain", "park", "garden", "forest", "beach"],
+    "kitchen": ["kitchen", "stove", "refrigerator", "oven", "microwave", "sink"],
+    "crowded_area": ["crowd", "people", "mall", "market", "stadium", "concert"],
+    "parking": ["parking", "garage", "lot"],
+    "warehouse": ["warehouse", "factory", "industrial", "storage", "shelf"],
+    "indoor": ["room", "living", "bedroom", "hallway", "interior", "sofa", "couch"],
+    "military": ["tank", "helicopter", "soldier", "uniform", "military", "army"],
 }
 
 
-# ═══════════════════════════════════════════════════════════════════
-# MAIN SCENE CLASSIFICATION FUNCTION
-# ═══════════════════════════════════════════════════════════════════
-
-def classify_scene(
-    image: Image.Image, 
-    detection_result: Optional[dict] = None
-) -> dict:
+def classify_scene(image: Image.Image, detection_result: Optional[dict] = None) -> dict:
     """
-    Classify the scene type using multiple signals.
-    
-    FIX #2: MobileNetV2 is used appropriately - only for general scene understanding
-    FIX #5: Base risk scores are much lower and more realistic
+    Enhanced scene classification with threat detection.
     
     Process:
-    1. Analyze detected objects (highest priority)
-    2. Use ImageNet predictions (supporting evidence)
-    3. Analyze brightness (night detection)
-    4. Combine signals with weighted voting
+    1. Check for weapons/threats first (highest priority)
+    2. Analyze detected objects and context
+    3. Use ImageNet for general scene understanding
+    4. Determine if military vs civilian context
     
     Args:
         image: PIL Image to classify
-        detection_result: Optional output from detect_objects()
+        detection_result: Output from detect_objects()
         
     Returns:
-        Dictionary containing:
-        - scene: Scene type identifier
-        - confidence: Classification confidence (0-100)
-        - scene_emoji: Emoji representing the scene
-        - description: Human-readable description
-        - base_risk_score: Inherent risk of this scene type
-        - top_predictions: Top ImageNet predictions
-        - is_dangerous: Boolean flag for high-risk scenes
-        - source: Which signal(s) determined the classification
+        Dictionary with scene type, confidence, risk score, and threat indicators
     """
     classification_signals = []
 
-    # ───────────────────────────────────────────────────────────────
-    # SIGNAL 1: Object-based classification (HIGHEST PRIORITY)
-    # ───────────────────────────────────────────────────────────────
+    # ═══════════════════════════════════════════════════════════════
+    # PRIORITY 1: Check for weapons and threats
+    # ═══════════════════════════════════════════════════════════════
     if detection_result:
+        threat_signal = _classify_from_threats(detection_result)
+        if threat_signal:
+            classification_signals.append(threat_signal)
+        
+        # Object-based classification
         object_signal = _classify_from_objects(detection_result)
         if object_signal:
             classification_signals.append(object_signal)
 
-    # ───────────────────────────────────────────────────────────────
-    # SIGNAL 2: ImageNet deep learning classification
-    # FIX #2: Used for general scene understanding, not security detection
-    # ───────────────────────────────────────────────────────────────
+    # ═══════════════════════════════════════════════════════════════
+    # SIGNAL 2: ImageNet classification
+    # ═══════════════════════════════════════════════════════════════
     if TF_AVAILABLE:
         imagenet_signal = _classify_from_imagenet(image)
         if imagenet_signal:
             classification_signals.append(imagenet_signal)
 
-    # ───────────────────────────────────────────────────────────────
-    # SIGNAL 3: Brightness analysis (night detection)
-    # ───────────────────────────────────────────────────────────────
+    # ═══════════════════════════════════════════════════════════════
+    # SIGNAL 3: Brightness analysis
+    # ═══════════════════════════════════════════════════════════════
     brightness_signal = _analyze_brightness(image)
     if brightness_signal:
         classification_signals.append(brightness_signal)
 
-    # ───────────────────────────────────────────────────────────────
-    # SIGNAL COMBINATION: Weighted voting system
-    # ───────────────────────────────────────────────────────────────
-    final_scene, final_confidence, source_info = _combine_signals(
-        classification_signals
-    )
+    # ═══════════════════════════════════════════════════════════════
+    # COMBINE SIGNALS
+    # ═══════════════════════════════════════════════════════════════
+    final_scene, final_confidence, source_info = _combine_signals(classification_signals)
     
     # Get scene metadata
-    scene_info = SCENE_DEFINITIONS.get(
-        final_scene, 
-        SCENE_DEFINITIONS["unknown"]
-    )
+    scene_info = SCENE_DEFINITIONS.get(final_scene, SCENE_DEFINITIONS["unknown"])
     emoji, base_risk, description = scene_info
     
-    # Determine if scene is inherently dangerous
-    dangerous_scenes = [
-        "violence", "robbery", "weapon_threat", 
-        "fire_emergency", "accident"
-    ]
+    # Determine if scene is dangerous
+    dangerous_scenes = ["violence", "robbery", "weapon_threat", "fire_emergency", "accident"]
     
     return {
         "scene": final_scene,
@@ -199,176 +150,183 @@ def classify_scene(
 
 
 # ═══════════════════════════════════════════════════════════════════
-# CLASSIFICATION SIGNAL EXTRACTORS
+# THREAT-BASED CLASSIFICATION (HIGHEST PRIORITY)
 # ═══════════════════════════════════════════════════════════════════
 
-def _classify_from_objects(detection_result: dict) -> Optional[Tuple[str, float, str]]:
+def _classify_from_threats(detection_result: dict) -> Optional[Tuple[str, float, str]]:
     """
-    Classify scene based on detected objects and their relationships.
-    
-    FIX #1 & #4: Only uses high-confidence real detections
-    No context engine inferences, no weapon guessing
-    
-    Args:
-        detection_result: Output from detect_objects()
-        
-    Returns:
-        Tuple of (scene_name, confidence, source_description) or None
+    Classify based on detected weapons and violence indicators.
+    This has highest priority - overrides all other signals.
     """
-    category_counts = detection_result.get("category_counts", {})
-    object_counts = detection_result.get("object_counts", {})
-    obj_keys = [k.lower() for k in object_counts.keys()]  # ← ADD THIS LINE
     weapons = detection_result.get("weapons_found", [])
-    fires = detection_result.get("fire_found", [])
+    violence = detection_result.get("violence_indicators", [])
+    objs = detection_result.get("object_counts", {})
     
     # ───────────────────────────────────────────────────────────────
-    # CRITICAL: Weapons (only real YOLO detections with 75%+ confidence)
-    # FIX #1: No inferred weapons from context engine
+    # WEAPONS DETECTED
     # ───────────────────────────────────────────────────────────────
     if weapons:
-        # Filter to only high-confidence real weapons
-        real_weapons = [
-            w for w in weapons 
-            if w.get("confidence", 0) >= 75
-        ]
+        # Filter to high-confidence weapons
+        real_weapons = [w for w in weapons if w.get("confidence", 0) >= 50]
         
         if real_weapons:
             weapon_names = " ".join(w["label"].lower() for w in real_weapons)
+            max_conf = max(w["confidence"] for w in real_weapons)
             
-            # Firearms = robbery scene
-            if any(gun in weapon_names for gun in ["gun", "rifle", "handgun", "pistol", "firearm", "shotgun"]):
-                return ("robbery", 85, "Firearm detected by YOLO")
+            # Check if military context (uniforms, vehicles, outdoor organized)
+            is_military = _detect_military_context(objs, detection_result)
+            
+            if is_military:
+                return ("military", min(max_conf, 85), "Armed military/law enforcement personnel detected")
+            
+            # Firearms in civilian context = robbery
+            if any(gun in weapon_names for gun in ["gun", "rifle", "handgun", "pistol", "firearm"]):
+                return ("robbery", min(max_conf + 10, 95), f"Firearm detected: {real_weapons[0]['label']}")
             
             # Other weapons = weapon threat
-            return ("weapon_threat", 80, "Weapon detected by YOLO")
+            return ("weapon_threat", min(max_conf, 90), f"Weapon detected: {real_weapons[0]['label']}")
     
     # ───────────────────────────────────────────────────────────────
-    # EMERGENCY: Fire/smoke detection
+    # VIOLENCE INDICATORS
     # ───────────────────────────────────────────────────────────────
+    if violence:
+        violence_types = [v.get("type", "") for v in violence]
+        
+        if "potential_victim" in violence_types:
+            return ("violence", 75, "Potential victim detected (person lying down)")
+        
+        if "aggressive_crowd" in violence_types:
+            return ("violence", 65, "Aggressive crowd formation detected")
+        
+        if "violent_scene_coloring" in violence_types:
+            return ("violence", 60, "Violence indicators in scene coloring")
+    
+    return None
+
+
+def _detect_military_context(objs: Dict, detection_result: dict) -> bool:
+    """
+    Detect if this is military/law enforcement context vs civilian threat.
+    
+    Indicators of military context:
+    - Military vehicles (helicopter, tank, truck)
+    - Uniforms (multiple people in organized formation)
+    - Outdoor organized setting
+    - Multiple armed individuals in formation
+    """
+    obj_keys = [k.lower() for k in objs.keys()]
+    
+    # Military vehicles
+    military_vehicles = ["helicopter", "airplane", "truck", "tank"]
+    has_military_vehicle = any(v in obj_keys for v in military_vehicles)
+    
+    # Large organized group (10+ people suggests training/operation)
+    person_count = 0
+    for obj_name, obj_data in objs.items():
+        if "person" in obj_name.lower():
+            person_count = obj_data.get("count", 0)
+            break
+    
+    # Military context indicators
+    is_outdoor = detection_result.get("category_counts", {}).get("OUTDOOR", 0) > 0
+    large_group = person_count >= 10
+    
+    return (has_military_vehicle or (large_group and is_outdoor))
+
+
+# ═══════════════════════════════════════════════════════════════════
+# OBJECT-BASED CLASSIFICATION
+# ═══════════════════════════════════════════════════════════════════
+
+def _classify_from_objects(detection_result: dict) -> Optional[Tuple[str, float, str]]:
+    """Classify scene based on detected objects"""
+    category_counts = detection_result.get("category_counts", {})
+    object_counts = detection_result.get("object_counts", {})
+    obj_keys = [k.lower() for k in object_counts.keys()]
+    fires = detection_result.get("fire_found", [])
+    
+    # Fire/smoke
     if fires:
-        return ("fire_emergency", 80, "Fire/smoke detected by YOLO")
+        return ("fire_emergency", 85, "Fire/smoke detected")
     
-    # ───────────────────────────────────────────────────────────────
-    # EMERGENCY: Emergency vehicles
-    # ───────────────────────────────────────────────────────────────
+    # Emergency vehicles
     if any(vehicle in obj_keys for vehicle in ["ambulance", "fire truck"]):
-        return ("accident", 75, "Emergency vehicle detected")
+        return ("accident", 80, "Emergency vehicle detected")
     
-    # ───────────────────────────────────────────────────────────────
     # Get high-confidence person count
-    # FIX #4: Only count persons with 60%+ confidence
-    # ───────────────────────────────────────────────────────────────
     person_count = 0
     for obj_name, obj_data in object_counts.items():
         if "person" in obj_name.lower():
-            if obj_data.get("max_confidence", 0) >= 60:
+            if obj_data.get("max_confidence", 0) >= 50:
                 person_count = obj_data.get("count", 0)
                 break
     
     vehicle_count = category_counts.get("VEHICLE", 0)
     
-    # ───────────────────────────────────────────────────────────────
-    # ROAD SCENES: Vehicles + traffic infrastructure
-    # ───────────────────────────────────────────────────────────────
+    # Road scenes
     traffic_signs = ["traffic light", "stop sign", "parking meter"]
     has_traffic_sign = any(sign in obj_keys for sign in traffic_signs)
     
     if vehicle_count >= 2 and has_traffic_sign:
-        return ("road", 75, "Multiple vehicles + traffic signs")
+        return ("road", 80, "Multiple vehicles + traffic infrastructure")
     
     if vehicle_count >= 3:
-        return ("road", 70, "Multiple vehicles detected")
+        return ("road", 75, "Multiple vehicles detected")
     
-    if vehicle_count >= 1 and has_traffic_sign:
-        return ("road", 65, "Vehicle + traffic infrastructure")
-    
-    # ───────────────────────────────────────────────────────────────
-    # CROWDED AREAS: Many people
-    # FIX #3: Significantly raised thresholds (was 5, now 20)
-    # ───────────────────────────────────────────────────────────────
-    if person_count >= 25:
+    # Crowded areas (lowered threshold from 25 to 12)
+    if person_count >= 12:
         return ("crowded_area", 75, f"{person_count} people detected")
     
-    if person_count >= 15:
-        return ("crowded_area", 65, f"{person_count} people detected")
-    
-    # ───────────────────────────────────────────────────────────────
-    # OFFICE: Multiple office items
-    # ───────────────────────────────────────────────────────────────
-    office_items = ["laptop", "keyboard", "monitor", "mouse", "desk", "computer"]
+    # Office
+    office_items = ["laptop", "keyboard", "monitor", "mouse", "desk"]
     office_count = sum(1 for item in office_items if item in obj_keys)
-    
     if office_count >= 2:
-        return ("office", 70, "Office equipment detected")
+        return ("office", 75, "Office equipment detected")
     
-    # ───────────────────────────────────────────────────────────────
-    # KITCHEN: Multiple kitchen items
-    # ───────────────────────────────────────────────────────────────
-    kitchen_items = ["microwave", "oven", "refrigerator", "sink", "stove", "toaster"]
+    # Kitchen
+    kitchen_items = ["microwave", "oven", "refrigerator", "sink", "stove"]
     kitchen_count = sum(1 for item in kitchen_items if item in obj_keys)
-    
     if kitchen_count >= 2:
-        return ("kitchen", 70, "Kitchen appliances detected")
+        return ("kitchen", 75, "Kitchen appliances detected")
     
-    # ───────────────────────────────────────────────────────────────
-    # WAREHOUSE: Industrial equipment
-    # ───────────────────────────────────────────────────────────────
-    warehouse_items = ["forklift", "pallet", "warehouse", "shelf"]
+    # Warehouse
+    warehouse_items = ["forklift", "pallet", "shelf"]
     if any(item in obj_keys for item in warehouse_items):
-        return ("warehouse", 65, "Industrial equipment detected")
+        return ("warehouse", 70, "Industrial equipment detected")
     
     return None
 
 
 def _classify_from_imagenet(image: Image.Image) -> Optional[Tuple[str, float, str]]:
-    """
-    Classify scene using MobileNetV2 ImageNet predictions.
-    
-    FIX #2: Used appropriately - general scene understanding, not security
-    Maps ImageNet categories to our scene types using keyword matching
-    
-    Args:
-        image: PIL Image to classify
-        
-    Returns:
-        Tuple of (scene_name, confidence, source_description) or None
-    """
+    """Classify scene using ImageNet predictions"""
     try:
         model = get_model()
         if model is None:
             return None
         
-        # Preprocess image for MobileNetV2
         img_resized = image.convert("RGB").resize((224, 224))
         img_array = np.array(img_resized, dtype=np.float32)
         img_array = np.expand_dims(preprocess_input(img_array), axis=0)
         
-        # Get predictions
         predictions = model.predict(img_array, verbose=0)
         decoded_predictions = decode_predictions(predictions, top=10)[0]
         
-        # Score each scene type based on keyword matching
         scene_scores = {scene: 0.0 for scene in KEYWORD_SCENE_MAP.keys()}
         
         for _, class_name, score in decoded_predictions:
             class_name_lower = class_name.lower()
-            
-            # Match against each scene's keywords
             for scene_type, keywords in KEYWORD_SCENE_MAP.items():
                 if any(keyword in class_name_lower for keyword in keywords):
                     scene_scores[scene_type] += float(score)
         
-        # Find best matching scene
         best_scene = max(scene_scores, key=scene_scores.get)
         best_score = scene_scores[best_scene]
         
-        # Only return if confidence is reasonable
-        if best_score >= 0.05:  # 5% minimum
+        if best_score >= 0.05:
             confidence = round(best_score * 100, 1)
             return (best_scene, confidence, f"ImageNet: {best_scene}")
         else:
-            # Fallback to generic indoor
-            return ("indoor", 35, "ImageNet: generic indoor scene")
+            return ("indoor", 40, "ImageNet: generic indoor scene")
             
     except Exception as e:
         print(f"ImageNet classification error: {e}")
@@ -376,25 +334,15 @@ def _classify_from_imagenet(image: Image.Image) -> Optional[Tuple[str, float, st
 
 
 def _analyze_brightness(image: Image.Image) -> Optional[Tuple[str, float, str]]:
-    """
-    Analyze image brightness to detect night scenes.
-    
-    Args:
-        image: PIL Image to analyze
-        
-    Returns:
-        Tuple of (scene_name, confidence, source_description) or None
-    """
+    """Detect night scenes based on brightness"""
     try:
-        # Convert to grayscale and resize for speed
         gray_image = image.convert("L").resize((100, 100))
         brightness_array = np.array(gray_image, dtype=np.float32)
         average_brightness = brightness_array.mean()
         
-        # Very dark = night scene
-        if average_brightness < 35:
-            confidence = round(100 - (average_brightness / 35 * 100), 1)
-            return ("night_scene", min(confidence, 60), "Brightness analysis: very dark")
+        if average_brightness < 40:
+            confidence = round(100 - (average_brightness / 40 * 100), 1)
+            return ("night_scene", min(confidence, 70), "Very dark scene detected")
         
         return None
         
@@ -403,90 +351,53 @@ def _analyze_brightness(image: Image.Image) -> Optional[Tuple[str, float, str]]:
         return None
 
 
-def _combine_signals(
-    signals: List[Tuple[str, float, str]]
-) -> Tuple[str, float, str]:
-    """
-    Combine multiple classification signals using weighted voting.
-    
-    Object-based signals have highest weight, ImageNet is supporting
-    
-    Args:
-        signals: List of (scene_name, confidence, source) tuples
-        
-    Returns:
-        Tuple of (final_scene, final_confidence, combined_source)
-    """
+def _combine_signals(signals: List[Tuple[str, float, str]]) -> Tuple[str, float, str]:
+    """Combine multiple classification signals"""
     if not signals:
         return ("unknown", 0, "No classification signals")
     
-    # Aggregate votes for each scene type
-    scene_votes = {}
-    
+    votes = {}
     for scene_type, confidence, source in signals:
-        if scene_type not in scene_votes:
-            scene_votes[scene_type] = {
-                "total_confidence": 0,
-                "count": 0,
-                "sources": []
-            }
+        if scene_type not in votes:
+            votes[scene_type] = {"total_confidence": 0, "count": 0, "sources": []}
         
-        scene_votes[scene_type]["total_confidence"] += confidence
-        scene_votes[scene_type]["count"] += 1
-        scene_votes[scene_type]["sources"].append(source)
+        votes[scene_type]["total_confidence"] += confidence
+        votes[scene_type]["count"] += 1
+        votes[scene_type]["sources"].append(source)
     
-    # Calculate weighted scores
-    # Multiple signals agreeing = bonus confidence
     best_scene = None
     best_score = -1
     
-    for scene_type, vote_data in scene_votes.items():
-        # Average confidence with multi-signal bonus
+    for scene_type, vote_data in votes.items():
         avg_confidence = vote_data["total_confidence"] / vote_data["count"]
-        signal_bonus = vote_data["count"] * 5  # 5% bonus per agreeing signal
-        
+        signal_bonus = vote_data["count"] * 8  # Increased from 5
         weighted_score = avg_confidence + signal_bonus
         
         if weighted_score > best_score:
             best_score = weighted_score
             best_scene = scene_type
     
-    # Get final confidence and source description
-    vote_data = scene_votes[best_scene]
-    final_confidence = round(
-        min(vote_data["total_confidence"] / vote_data["count"], 95), 
-        1
-    )
+    vote_data = votes[best_scene]
+    final_confidence = round(min(vote_data["total_confidence"] / vote_data["count"], 95), 1)
     combined_source = " + ".join(vote_data["sources"])
     
     return (best_scene, final_confidence, combined_source)
 
 
 def _get_top_imagenet_predictions(image: Image.Image) -> List[Tuple[str, float]]:
-    """
-    Get top ImageNet predictions for display purposes.
-    
-    Args:
-        image: PIL Image to classify
-        
-    Returns:
-        List of (class_name, confidence_percentage) tuples
-    """
+    """Get top ImageNet predictions for display"""
     try:
         model = get_model()
         if model is None:
             return []
         
-        # Preprocess
         img_resized = image.convert("RGB").resize((224, 224))
         img_array = np.array(img_resized, dtype=np.float32)
         img_array = np.expand_dims(preprocess_input(img_array), axis=0)
         
-        # Predict
         predictions = model.predict(img_array, verbose=0)
         decoded_predictions = decode_predictions(predictions, top=8)[0]
         
-        # Format results
         results = [
             (class_name.replace("_", " "), round(float(score) * 100, 1))
             for _, class_name, score in decoded_predictions

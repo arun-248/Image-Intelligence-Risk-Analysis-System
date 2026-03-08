@@ -1,9 +1,7 @@
 """
-risk_engine.py — Risk Analysis and Scoring Engine
-PRODUCTION VERSION: Conservative, realistic risk assessment
-FIX #3: Significantly raised thresholds (5 people ≠ extreme crowd)
-FIX #4: All rules check confidence levels before triggering
-FIX #5: Category caps prevent score stacking
+risk_engine.py — Advanced Risk Analysis Engine
+UPGRADED: Better weapon detection, threat patterns, detailed explanations
+Realistic scoring with lowered thresholds for actual threat detection
 """
 
 from typing import Dict, List, Tuple, Callable, Optional
@@ -21,34 +19,30 @@ RISK_CRITICAL = "CRITICAL"
 
 def score_to_level(score: int) -> str:
     """
-    Convert numeric risk score to risk level category.
+    Convert numeric risk score to risk level.
     
-    FIX #5: Thresholds adjusted for more realistic distribution
-    
-    Args:
-        score: Risk score (0-100)
-        
-    Returns:
-        Risk level string
+    UPDATED: Lowered thresholds to catch real threats
+    - CRITICAL: 60+ (was 65+)
+    - HIGH: 35+ (was 40+)
+    - MEDIUM: 18+ (was 20+)
+    - LOW: <18
     """
-    if score >= 65:
+    if score >= 60:
         return RISK_CRITICAL
-    if score >= 40:
+    if score >= 35:
         return RISK_HIGH
-    if score >= 20:
+    if score >= 18:
         return RISK_MEDIUM
     return RISK_LOW
 
 
-# Risk level color coding for UI display
 RISK_COLORS = {
-    RISK_LOW: "#22c55e",      # Green
-    RISK_MEDIUM: "#f59e0b",   # Amber
-    RISK_HIGH: "#ef4444",     # Red
-    RISK_CRITICAL: "#aa00ff"  # Purple
+    RISK_LOW: "#22c55e",
+    RISK_MEDIUM: "#f59e0b",
+    RISK_HIGH: "#ef4444",
+    RISK_CRITICAL: "#aa00ff"
 }
 
-# Risk level emoji indicators
 RISK_EMOJIS = {
     RISK_LOW: "✅",
     RISK_MEDIUM: "⚠️",
@@ -58,34 +52,18 @@ RISK_EMOJIS = {
 
 
 # ═══════════════════════════════════════════════════════════════════
-# HELPER FUNCTIONS FOR RULE CONDITIONS
-# FIX #4: All helpers check confidence thresholds
+# HELPER FUNCTIONS (LOWERED CONFIDENCE THRESHOLDS)
 # ═══════════════════════════════════════════════════════════════════
 
-def _has_firearm(
-    objects: Dict[str, dict], 
-    min_confidence: int = 80
-) -> bool:
+def _has_firearm(objects: Dict[str, dict], min_confidence: int = 50) -> bool:
     """
-    Check if a firearm was detected with high confidence.
-    
-    FIX #4: Only returns True if confidence >= min_confidence
-    
-    Args:
-        objects: Object counts dictionary from detection
-        min_confidence: Minimum confidence percentage (default 80%)
-        
-    Returns:
-        True if high-confidence firearm detected
+    Check for firearms (LOWERED from 80% to 50%)
     """
     firearm_keywords = ["gun", "rifle", "pistol", "handgun", "firearm", "shotgun", "revolver"]
     
     for obj_name, obj_data in objects.items():
         obj_name_lower = obj_name.lower()
-        
-        # Check if this is a firearm
         if any(keyword in obj_name_lower for keyword in firearm_keywords):
-            # Check confidence level
             max_conf = obj_data.get("max_confidence", 0)
             if max_conf >= min_confidence:
                 return True
@@ -93,21 +71,9 @@ def _has_firearm(
     return False
 
 
-def _has_knife(
-    objects: Dict[str, dict], 
-    min_confidence: int = 75
-) -> bool:
+def _has_knife(objects: Dict[str, dict], min_confidence: int = 50) -> bool:
     """
-    Check if a knife was detected with high confidence.
-    
-    FIX #4: Only returns True if confidence >= min_confidence
-    
-    Args:
-        objects: Object counts dictionary from detection
-        min_confidence: Minimum confidence percentage (default 75%)
-        
-    Returns:
-        True if high-confidence knife detected
+    Check for knives (LOWERED from 75% to 50%)
     """
     for obj_name, obj_data in objects.items():
         if "knife" in obj_name.lower():
@@ -118,30 +84,17 @@ def _has_knife(
     return False
 
 
-def _has_weapon(
-    objects: Dict[str, dict], 
-    min_confidence: int = 75
-) -> bool:
+def _has_weapon(objects: Dict[str, dict], min_confidence: int = 50) -> bool:
     """
-    Check if any weapon was detected with high confidence.
-    
-    FIX #4: Only returns True if confidence >= min_confidence
-    
-    Args:
-        objects: Object counts dictionary from detection
-        min_confidence: Minimum confidence percentage (default 75%)
-        
-    Returns:
-        True if high-confidence weapon detected
+    Check for any weapon (LOWERED from 75% to 50%)
     """
     weapon_keywords = [
-        "gun", "rifle", "pistol", "handgun", "firearm", "shotgun", 
-        "knife", "blade", "sword", "dagger", "machete", "axe"
+        "gun", "rifle", "pistol", "handgun", "firearm", "shotgun",
+        "knife", "blade", "sword", "dagger", "machete", "axe", "weapon"
     ]
     
     for obj_name, obj_data in objects.items():
         obj_name_lower = obj_name.lower()
-        
         if any(keyword in obj_name_lower for keyword in weapon_keywords):
             max_conf = obj_data.get("max_confidence", 0)
             if max_conf >= min_confidence:
@@ -150,21 +103,9 @@ def _has_weapon(
     return False
 
 
-def _get_person_count(
-    objects: Dict[str, dict], 
-    min_confidence: int = 60
-) -> int:
+def _get_person_count(objects: Dict[str, dict], min_confidence: int = 50) -> int:
     """
-    Get count of people detected with sufficient confidence.
-    
-    FIX #4: Only counts persons with confidence >= min_confidence
-    
-    Args:
-        objects: Object counts dictionary from detection
-        min_confidence: Minimum confidence percentage (default 60%)
-        
-    Returns:
-        Number of high-confidence people detected
+    Get person count (LOWERED from 60% to 50%)
     """
     for obj_name, obj_data in objects.items():
         if "person" in obj_name.lower():
@@ -178,20 +119,10 @@ def _get_person_count(
 def _has_object(
     objects: Dict[str, dict],
     object_keyword: str,
-    min_confidence: int = 55
+    min_confidence: int = 45
 ) -> bool:
     """
-    Check if a specific object type was detected with sufficient confidence.
-    
-    FIX #4: Only returns True if confidence >= min_confidence
-    
-    Args:
-        objects: Object counts dictionary from detection
-        object_keyword: Keyword to search for (e.g., "phone", "car")
-        min_confidence: Minimum confidence percentage (default 55%)
-        
-    Returns:
-        True if high-confidence object detected
+    Check for specific object (LOWERED from 55% to 45%)
     """
     for obj_name, obj_data in objects.items():
         if object_keyword.lower() in obj_name.lower():
@@ -203,145 +134,189 @@ def _has_object(
 
 
 def _get_vehicle_count(categories: Dict[str, int]) -> int:
-    """
-    Get total count of vehicles detected.
-    
-    Args:
-        categories: Category counts from detection
-        
-    Returns:
-        Number of vehicles
-    """
+    """Get vehicle count"""
     return categories.get("VEHICLE", 0)
 
 
+def _has_violence_indicators(violence_list: List[dict]) -> bool:
+    """Check if violence indicators present"""
+    return len(violence_list) > 0
+
+
+def _get_weapon_details(weapons_list: List[dict]) -> Tuple[int, float, List[str]]:
+    """
+    Get weapon details: count, max confidence, and types
+    """
+    if not weapons_list:
+        return (0, 0.0, [])
+    
+    count = len(weapons_list)
+    max_conf = max(w.get("confidence", 0) for w in weapons_list)
+    types = list(set(w.get("label", "unknown") for w in weapons_list))
+    
+    return (count, max_conf, types)
+
+
 # ═══════════════════════════════════════════════════════════════════
-# RISK RULES
-# FIX #3: Significantly raised thresholds for crowd-based rules
-# FIX #4: All rules use helper functions that check confidence
+# RISK RULES (UPDATED WITH WEAPON DETECTION)
 # ═══════════════════════════════════════════════════════════════════
 
-# Rule format: (name, condition_function, score, explanation, category)
 RULES: List[Tuple[str, Callable, int, str, str]] = [
 
     # ═══════════════════════════════════════════════════════════════
-    # CRITICAL SECURITY THREATS (Highest Priority)
+    # CRITICAL THREATS (Weapons, Violence, Emergencies)
     # ═══════════════════════════════════════════════════════════════
     
     (
-        "firearm_confirmed",
-        lambda o, c, s, d: _has_firearm(o, min_confidence=80),
-        50,
-        "🔫 Firearm CONFIRMED by YOLO with 80%+ confidence — CRITICAL security alert.",
+        "firearm_detected",
+        lambda o, c, s, d: _has_firearm(o, 50),
+        55,
+        "🔫 FIREARM DETECTED by weapon detection system (50%+ confidence)",
+        "security"
+    ),
+    
+    (
+        "multiple_firearms",
+        lambda o, c, s, d: len([k for k, v in o.items() 
+                               if any(gun in k.lower() for gun in ["gun", "rifle", "pistol"]) 
+                               and v.get("max_confidence", 0) >= 50]) >= 2,
+        65,
+        "🔫🔫 MULTIPLE FIREARMS detected — extreme threat",
         "security"
     ),
     
     (
         "knife_non_kitchen",
-        lambda o, c, s, d: _has_knife(o, 75) and s not in ["kitchen"],
-        35,
-        "🔪 Knife detected in non-kitchen environment with 75%+ confidence.",
+        lambda o, c, s, d: _has_knife(o, 50) and s not in ["kitchen"],
+        40,
+        "🔪 Knife detected in non-kitchen environment",
         "security"
     ),
     
     (
         "weapon_generic",
-        lambda o, c, s, d: _has_weapon(o, 75) and not _has_firearm(o, 80) and not _has_knife(o, 75),
-        30,
-        "⚔️ Weapon detected with 75%+ confidence.",
+        lambda o, c, s, d: _has_weapon(o, 50),
+        35,
+        "⚔️ Weapon detected by detection system",
         "security"
     ),
     
     # ═══════════════════════════════════════════════════════════════
-    # DANGEROUS SCENE CLASSIFICATIONS
+    # VIOLENCE INDICATORS
+    # ═══════════════════════════════════════════════════════════════
+    
+    (
+        "violence_scene_detected",
+        lambda o, c, s, d: s == "violence",
+        45,
+        "🚨 Violence scene detected by scene classifier",
+        "violence"
+    ),
+    
+    (
+        "potential_victim_detected",
+        lambda o, c, s, d: any(v.get("type") == "potential_victim" 
+                              for v in d.get("violence_indicators", [])),
+        40,
+        "🚨 Potential victim detected (person lying down with others present)",
+        "violence"
+    ),
+    
+    (
+        "aggressive_crowd_pattern",
+        lambda o, c, s, d: any(v.get("type") == "aggressive_crowd" 
+                              for v in d.get("violence_indicators", [])),
+        35,
+        "👥 Aggressive crowd formation detected",
+        "violence"
+    ),
+    
+    (
+        "violent_scene_coloring",
+        lambda o, c, s, d: any(v.get("type") == "violent_scene_coloring" 
+                              for v in d.get("violence_indicators", [])),
+        25,
+        "🎨 Violence indicators in scene coloring/atmosphere",
+        "violence"
+    ),
+    
+    # ═══════════════════════════════════════════════════════════════
+    # ARMED THREAT COMBINATIONS
     # ═══════════════════════════════════════════════════════════════
     
     (
         "robbery_scene",
         lambda o, c, s, d: s == "robbery",
-        45,
-        "🔫 Armed robbery scene detected by scene classifier.",
+        50,
+        "🔫 Armed robbery scene detected",
         "crime"
     ),
     
     (
         "weapon_threat_scene",
         lambda o, c, s, d: s == "weapon_threat",
-        40,
-        "⚔️ Weapon threat scene detected by scene classifier.",
-        "crime"
-    ),
-    
-    (
-        "violence_scene",
-        lambda o, c, s, d: s == "violence",
-        35,
-        "🚨 Violence or altercation scene detected by scene classifier.",
-        "violence"
-    ),
-    
-    # ═══════════════════════════════════════════════════════════════
-    # WEAPON + CROWD COMBINATIONS
-    # FIX #3: Raised threshold from 5 to 15 people
-    # ═══════════════════════════════════════════════════════════════
-    
-    (
-        "armed_crowded_area",
-        lambda o, c, s, d: _has_weapon(o, 80) and _get_person_count(o) >= 15,
         45,
-        "🚨 Weapon detected in crowded area (15+ people) — mass casualty risk.",
-        "violence"
-    ),
-    
-    (
-        "armed_medium_crowd",
-        lambda o, c, s, d: _has_weapon(o, 80) and _get_person_count(o) >= 8 and _get_person_count(o) < 15,
-        35,
-        "⚠️ Weapon detected with multiple people present (8-14 people).",
-        "violence"
-    ),
-    
-    (
-        "armed_indoors",
-        lambda o, c, s, d: _has_weapon(o, 80) and s in ["indoor", "office", "warehouse", "hospital"],
-        40,
-        "🔫 Weapon detected in indoor environment — immediate security concern.",
+        "⚔️ Weapon threat scene detected",
         "crime"
     ),
     
     (
-        "armed_night",
-        lambda o, c, s, d: _has_weapon(o, 80) and s == "night_scene",
-        38,
-        "🌙🔫 Weapon detected in night-time scene — increased danger.",
+        "armed_civilian_indoor",
+        lambda o, c, s, d: _has_weapon(o, 50) and s in ["indoor", "office", "hospital", "classroom"],
+        50,
+        "🔫 Weapon detected in civilian indoor space — immediate threat",
         "crime"
+    ),
+    
+    (
+        "weapon_with_crowd",
+        lambda o, c, s, d: _has_weapon(o, 50) and _get_person_count(o) >= 8,
+        50,
+        "🚨 Weapon detected with crowd (8+ people) — mass casualty risk",
+        "violence"
+    ),
+    
+    (
+        "armed_night_scene",
+        lambda o, c, s, d: _has_weapon(o, 50) and s == "night_scene",
+        42,
+        "🌙🔫 Weapon detected in night scene — high danger",
+        "crime"
+    ),
+    
+    (
+        "weapon_with_violence",
+        lambda o, c, s, d: _has_weapon(o, 50) and _has_violence_indicators(d.get("violence_indicators", [])),
+        55,
+        "🚨⚔️ Weapon + violence indicators — CRITICAL THREAT",
+        "violence"
     ),
     
     # ═══════════════════════════════════════════════════════════════
-    # FIRE AND EMERGENCY SITUATIONS
+    # FIRE AND EMERGENCIES
     # ═══════════════════════════════════════════════════════════════
     
     (
         "fire_emergency",
         lambda o, c, s, d: s == "fire_emergency",
-        40,
-        "🔥 Fire or smoke emergency scene detected.",
+        45,
+        "🔥 Fire or smoke emergency detected",
         "fire_safety"
     ),
     
     (
         "fire_with_people",
         lambda o, c, s, d: s == "fire_emergency" and _get_person_count(o) >= 1,
-        50,
-        "🔥👤 People present in fire emergency scene — life-threatening situation.",
+        55,
+        "🔥👤 People in fire emergency — life-threatening",
         "fire_safety"
     ),
     
     (
         "fire_truck_present",
-        lambda o, c, s, d: _has_object(o, "fire truck", 60),
-        30,
-        "🚒 Fire truck detected — active fire emergency response.",
+        lambda o, c, s, d: _has_object(o, "fire truck", 50),
+        32,
+        "🚒 Fire truck detected — active emergency response",
         "emergency"
     ),
     
@@ -352,113 +327,112 @@ RULES: List[Tuple[str, Callable, int, str, str]] = [
     (
         "accident_scene",
         lambda o, c, s, d: s == "accident",
-        35,
-        "🚗💥 Vehicle accident scene detected.",
+        38,
+        "🚗💥 Vehicle accident scene",
         "emergency"
     ),
     
     (
         "ambulance_present",
-        lambda o, c, s, d: _has_object(o, "ambulance", 60),
-        28,
-        "🚑 Ambulance detected — medical emergency in progress.",
+        lambda o, c, s, d: _has_object(o, "ambulance", 50),
+        30,
+        "🚑 Ambulance detected — medical emergency",
         "emergency"
     ),
     
     (
         "people_at_accident",
         lambda o, c, s, d: s == "accident" and _get_person_count(o) >= 1,
-        38,
-        "🚗💥👤 People at accident scene — possible casualties.",
+        40,
+        "🚗💥👤 People at accident scene — possible casualties",
         "emergency"
     ),
     
     (
         "multi_vehicle_accident",
         lambda o, c, s, d: s == "accident" and _get_vehicle_count(c) >= 3,
-        40,
-        "🚗🚗🚗 Multiple vehicles in accident scene — major collision.",
+        42,
+        "🚗🚗🚗 Multiple vehicles in accident — major collision",
         "emergency"
     ),
     
     # ═══════════════════════════════════════════════════════════════
-    # TRAFFIC SAFETY VIOLATIONS
+    # TRAFFIC SAFETY
     # ═══════════════════════════════════════════════════════════════
     
     (
         "phone_while_driving",
-        lambda o, c, s, d: _has_object(o, "phone", 60) and s == "road" and _get_person_count(o) >= 1,
-        25,
-        "📱🚗 Phone detected in road scene — distracted driving risk.",
+        lambda o, c, s, d: _has_object(o, "phone", 55) and s == "road" and _get_person_count(o) >= 1,
+        28,
+        "📱🚗 Phone in road scene — distracted driving risk",
         "traffic_safety"
     ),
     
     (
         "pedestrian_in_traffic",
         lambda o, c, s, d: s == "road" and _get_person_count(o) >= 1 and _get_vehicle_count(c) >= 2,
-        22,
-        "🚶🚗 Pedestrian in active traffic area with multiple vehicles.",
+        25,
+        "🚶🚗 Pedestrian in active traffic with multiple vehicles",
         "traffic_safety"
     ),
     
     (
         "vehicle_in_crowd",
-        lambda o, c, s, d: _get_vehicle_count(c) >= 1 and _get_person_count(o) >= 20,
-        28,
-        "🚗👥 Vehicle in very crowded area (20+ people) — pedestrian safety concern.",
+        lambda o, c, s, d: _get_vehicle_count(c) >= 1 and _get_person_count(o) >= 15,
+        30,
+        "🚗👥 Vehicle in crowded area (15+ people) — pedestrian danger",
         "traffic_safety"
     ),
     
     (
         "night_driving",
         lambda o, c, s, d: s == "night_scene" and _get_vehicle_count(c) >= 1,
-        15,
-        "🌙🚗 Vehicle in night-time scene — reduced visibility risk.",
+        18,
+        "🌙🚗 Vehicle in night scene — reduced visibility",
         "traffic_safety"
     ),
     
     (
         "motorcycle_no_helmet",
-        lambda o, c, s, d: _has_object(o, "motorcycle", 60) and s in ["road", "outdoor"] and not _has_object(o, "helmet", 50),
-        18,
-        "🏍️ Motorcycle detected without confirmed helmet — safety violation.",
+        lambda o, c, s, d: _has_object(o, "motorcycle", 55) and s in ["road", "outdoor"],
+        20,
+        "🏍️ Motorcycle detected — verify helmet use",
         "traffic_safety"
     ),
     
     # ═══════════════════════════════════════════════════════════════
-    # CROWD SAFETY
-    # FIX #3: Significantly raised thresholds (was 5, now 25 for "extreme")
+    # CROWD SAFETY (LOWERED THRESHOLDS)
     # ═══════════════════════════════════════════════════════════════
     
     (
         "extreme_crowd",
-        lambda o, c, s, d: _get_person_count(o) >= 40,
+        lambda o, c, s, d: _get_person_count(o) >= 25,
         22,
-        "👥👥👥 Extreme crowd density (40+ people) — serious crowd management needed.",
+        "👥👥👥 Extreme crowd (25+ people) — serious crowd management needed",
         "crowd_safety"
     ),
     
     (
         "very_large_crowd",
-        lambda o, c, s, d: _get_person_count(o) >= 25 and _get_person_count(o) < 40,
+        lambda o, c, s, d: _get_person_count(o) >= 15 and _get_person_count(o) < 25,
         18,
-        "👥👥 Very large crowd (25-39 people) — crowd control recommended.",
+        "👥👥 Very large crowd (15-24 people) — monitor for safety",
         "crowd_safety"
     ),
     
     (
         "large_crowd",
-        lambda o, c, s, d: _get_person_count(o) >= 15 or s == "crowded_area",
+        lambda o, c, s, d: _get_person_count(o) >= 8 or s == "crowded_area",
         15,
-        "👥 Large crowd (15+ people) detected — monitor for safety.",
+        "👥 Large crowd (8+ people) detected",
         "crowd_safety"
     ),
     
     (
         "night_crowd",
-        lambda o, c, s, d: s == "night_scene" and _get_person_count(o) >= 15,
-        18,
-        "🌙👥 Large crowd in night-time scene — safety monitoring required.",
+        lambda o, c, s, d: s == "night_scene" and _get_person_count(o) >= 10,
+        20,
+        "🌙👥 Large crowd in night scene — safety monitoring required",
         "crowd_safety"
     ),
     
@@ -468,90 +442,69 @@ RULES: List[Tuple[str, Callable, int, str, str]] = [
     
     (
         "ladder_hazard",
-        lambda o, c, s, d: _has_object(o, "ladder", 55),
+        lambda o, c, s, d: _has_object(o, "ladder", 50),
         12,
-        "🪜 Ladder detected — fall hazard present.",
+        "🪜 Ladder detected — fall hazard",
         "workplace_safety"
     ),
     
     (
         "workers_industrial",
         lambda o, c, s, d: s == "warehouse" and _get_person_count(o) >= 1,
-        10,
-        "🏭 Workers in industrial area — PPE compliance check recommended.",
+        12,
+        "🏭 Workers in industrial area — verify PPE compliance",
         "workplace_safety"
     ),
     
     (
         "height_work",
-        lambda o, c, s, d: _has_object(o, "ladder", 55) and _get_person_count(o) >= 1,
-        15,
-        "🪜👤 Person working at height — fall protection required.",
+        lambda o, c, s, d: _has_object(o, "ladder", 50) and _get_person_count(o) >= 1,
+        18,
+        "🪜👤 Person working at height — fall protection required",
         "workplace_safety"
     ),
     
     # ═══════════════════════════════════════════════════════════════
-    # HEALTH AND MEDICAL SAFETY
+    # HEALTH AND MEDICAL
     # ═══════════════════════════════════════════════════════════════
     
     (
         "phone_in_hospital",
-        lambda o, c, s, d: _has_object(o, "phone", 60) and s == "hospital",
+        lambda o, c, s, d: _has_object(o, "phone", 55) and s == "hospital",
         10,
-        "📱🏥 Mobile phone in hospital — potential equipment interference.",
+        "📱🏥 Phone in hospital — equipment interference risk",
         "health_safety"
     ),
     
     # ═══════════════════════════════════════════════════════════════
-    # SECURITY CONCERNS (Minor)
+    # MILITARY CONTEXT (Lower risk - legitimate use)
     # ═══════════════════════════════════════════════════════════════
     
     (
-        "backpack_very_large_crowd",
-        lambda o, c, s, d: _has_object(o, "backpack", 50) and _get_person_count(o) >= 30,
-        12,
-        "🎒 Backpack in very large crowd (30+ people) — security awareness.",
+        "military_scene",
+        lambda o, c, s, d: s == "military",
+        0,  # No additional risk - already in base score
+        "🪖 Military/law enforcement context detected",
         "security"
     ),
     
-    (
-        "night_person_outdoor",
-        lambda o, c, s, d: s == "night_scene" and _get_person_count(o) >= 1 and s in ["outdoor", "parking"],
-        8,
-        "🌙 Person in night-time outdoor scene — visibility concern.",
-        "security"
-    ),
-    
-    # ═══════════════════════════════════════════════════════════════
-    # PROPERTY PROTECTION
-    # ═══════════════════════════════════════════════════════════════
-    
-    (
-        "electronics_outdoor",
-        lambda o, c, s, d: (_has_object(o, "laptop", 55) or _has_object(o, "tv", 55)) and s == "outdoor",
-        8,
-        "💻 Electronics in outdoor scene — theft or weather damage risk.",
-        "property"
-    ),
 ]
 
 
 # ═══════════════════════════════════════════════════════════════════
-# CATEGORY CAPS (Prevents unbounded score stacking)
-# FIX #5: Each category has a maximum contribution to total risk score
+# CATEGORY CAPS
 # ═══════════════════════════════════════════════════════════════════
 
 CATEGORY_CAPS = {
-    "security": 35,          # Weapons, threats
-    "crime": 35,             # Robbery, criminal activity
-    "violence": 35,          # Violence, aggression
-    "emergency": 30,         # Accidents, medical emergencies
-    "fire_safety": 30,       # Fire, smoke, explosions
-    "traffic_safety": 25,    # Road safety violations
-    "crowd_safety": 20,      # Crowd management
-    "workplace_safety": 15,  # Industrial hazards
-    "health_safety": 10,     # Medical facility concerns
-    "property": 8,           # Property protection
+    "security": 40,          # Weapons (increased from 35)
+    "crime": 40,             # Robbery, threats
+    "violence": 40,          # Violence, aggression
+    "emergency": 35,         # Accidents, medical
+    "fire_safety": 35,       # Fire, smoke
+    "traffic_safety": 28,    # Road safety
+    "crowd_safety": 22,      # Crowd management
+    "workplace_safety": 18,  # Industrial hazards
+    "health_safety": 12,     # Medical facility
 }
 
 
@@ -559,70 +512,54 @@ CATEGORY_CAPS = {
 # MAIN RISK ANALYSIS FUNCTION
 # ═══════════════════════════════════════════════════════════════════
 
-def analyze_risk(
-    detection_result: Dict,
-    scene_result: Dict
-) -> Dict:
+def analyze_risk(detection_result: Dict, scene_result: Dict) -> Dict:
     """
-    Perform comprehensive risk analysis on detected objects and scene.
+    Advanced risk analysis with weapon detection and detailed explanations.
     
-    FIX #3: Uses realistic thresholds (not 5 people = extreme crowd)
-    FIX #4: All rules check confidence before triggering
-    FIX #5: Category caps prevent unbounded score accumulation
+    UPGRADED:
+    - Detects actual weapons from YOLO-OIV7
+    - Violence pattern detection
+    - Detailed explanations with evidence
+    - Lowered thresholds for real threat detection
     
     Args:
         detection_result: Output from detect_objects()
         scene_result: Output from classify_scene()
         
     Returns:
-        Dictionary containing:
-        - risk_score: Total risk score (0-100)
-        - risk_level: Risk level category (LOW/MEDIUM/HIGH/CRITICAL)
-        - risk_color: Color code for UI display
-        - risk_emoji: Emoji indicator
-        - triggered_rules: List of rules that triggered
-        - total_rules_triggered: Count of triggered rules
-        - category_scores: Risk points per category
-        - scene_base_risk: Base risk from scene type
-        - explanation: Human-readable explanation
-        - recommendations: List of recommended actions
+        Complete risk analysis with detailed breakdown
     """
-    # Extract data from results
+    # Extract data
     objects = detection_result.get("object_counts", {})
     categories = detection_result.get("category_counts", {})
     scene = scene_result.get("scene", "unknown")
-    base_risk = scene_result.get("base_risk_score", 5)
+    base_risk = scene_result.get("base_risk_score", 8)
     is_dangerous = scene_result.get("is_dangerous", False)
     
-    # Initialize category scores
+    # NEW: Extract weapon and violence data
+    weapons_found = detection_result.get("weapons_found", [])
+    violence_indicators = detection_result.get("violence_indicators", [])
+    
+    # Initialize
     category_scores = {category: 0 for category in CATEGORY_CAPS.keys()}
     triggered_rules = []
     
     # ───────────────────────────────────────────────────────────────
-    # Evaluate all risk rules
+    # Evaluate all rules
     # ───────────────────────────────────────────────────────────────
     for rule_name, condition_func, score, explanation, category in RULES:
         try:
-            # Check if rule condition is met
-            if condition_func(objects, categories, scene, is_dangerous):
+            # Pass full detection result for violence/weapon checks
+            if condition_func(objects, categories, scene, detection_result):
                 
-                # Calculate score to add (respecting category cap)
-                current_category_score = category_scores[category]
+                current_score = category_scores[category]
                 category_cap = CATEGORY_CAPS[category]
                 
-                # Add score but don't exceed category cap
-                new_category_score = min(
-                    current_category_score + score,
-                    category_cap
-                )
+                new_score = min(current_score + score, category_cap)
+                points_added = new_score - current_score
                 
-                # Calculate actual points added
-                points_added = new_category_score - current_category_score
+                category_scores[category] = new_score
                 
-                # Update category score
-                category_scores[category] = new_category_score
-                
-                # Record triggered rule (only if points were actually added)
                 if points_added > 0:
                     triggered_rules.append({
                         "name": rule_name,
@@ -632,36 +569,34 @@ def analyze_risk(
                     })
         
         except Exception as e:
-            # Rule evaluation failed - skip this rule
-            print(f"Rule '{rule_name}' evaluation error: {e}")
+            print(f"Rule '{rule_name}' error: {e}")
             continue
     
     # ───────────────────────────────────────────────────────────────
-    # Calculate total risk score
+    # Calculate total score
     # ───────────────────────────────────────────────────────────────
     total_score = base_risk + sum(category_scores.values())
-    total_score = min(total_score, 100)  # Cap at 100
+    total_score = min(total_score, 100)
     
     risk_level = score_to_level(total_score)
     
     # ───────────────────────────────────────────────────────────────
-    # Generate explanation and recommendations
+    # Generate detailed explanation and recommendations
     # ───────────────────────────────────────────────────────────────
-    explanation = _generate_explanation(
+    explanation = _generate_detailed_explanation(
         risk_level,
         total_score,
         triggered_rules,
         scene,
-        objects
+        objects,
+        weapons_found,
+        violence_indicators
     )
     
-    recommendations = _generate_recommendations(
-        risk_level,
-        triggered_rules
-    )
+    recommendations = _generate_recommendations(risk_level, triggered_rules, weapons_found)
     
     # ───────────────────────────────────────────────────────────────
-    # Return complete risk analysis
+    # Return complete analysis
     # ───────────────────────────────────────────────────────────────
     return {
         "risk_score": total_score,
@@ -670,152 +605,141 @@ def analyze_risk(
         "risk_emoji": RISK_EMOJIS[risk_level],
         "triggered_rules": triggered_rules,
         "total_rules_triggered": len(triggered_rules),
-        "category_scores": {
-            k: v for k, v in category_scores.items() if v > 0
-        },
+        "category_scores": {k: v for k, v in category_scores.items() if v > 0},
         "scene_base_risk": base_risk,
         "explanation": explanation,
         "recommendations": recommendations,
+        "weapons_detected": len(weapons_found) > 0,
+        "weapon_details": _format_weapon_details(weapons_found),
+        "violence_detected": len(violence_indicators) > 0,
     }
 
 
 # ═══════════════════════════════════════════════════════════════════
-# EXPLANATION GENERATION
+# DETAILED EXPLANATION GENERATOR
 # ═══════════════════════════════════════════════════════════════════
 
-def _generate_explanation(
+def _generate_detailed_explanation(
     level: str,
     score: int,
     triggered: List[Dict],
     scene: str,
-    objects: Dict[str, dict]
+    objects: Dict[str, dict],
+    weapons: List[dict],
+    violence: List[dict]
 ) -> str:
-    """
-    Generate human-readable explanation of risk analysis.
-    
-    Args:
-        level: Risk level (LOW/MEDIUM/HIGH/CRITICAL)
-        score: Total risk score
-        triggered: List of triggered rules
-        scene: Scene type
-        objects: Detected objects
-        
-    Returns:
-        Multi-line explanation string
-    """
+    """Generate detailed, evidence-based explanation"""
     lines = []
     
     # Header
-    lines.append(f"**Risk Level: {level} ({score}/100)**")
-    lines.append(f"Scene: {scene.replace('_', ' ').title()}")
+    lines.append(f"**Risk Assessment: {level} ({score}/100)**")
+    lines.append(f"**Scene Type:** {scene.replace('_', ' ').title()}")
     
-    # Top detected objects
+    # Weapon detection (if any)
+    if weapons:
+        lines.append("\n**⚠️ WEAPONS DETECTED:**")
+        for w in weapons:
+            lines.append(f"• {w['label']} ({w['confidence']:.0f}% confidence) - Detected by {w['source']}")
+    
+    # Violence indicators (if any)
+    if violence:
+        lines.append("\n**🚨 VIOLENCE INDICATORS:**")
+        for v in violence:
+            reason = v.get("reason", v.get("type", "Unknown"))
+            conf = v.get("confidence", 0)
+            lines.append(f"• {reason} ({conf:.0f}% confidence)")
+    
+    # Object summary
     if objects:
-        object_list = [
-            (name, data.get("count", 0)) 
-            for name, data in objects.items()
-        ]
+        object_list = [(name, data.get("count", 0)) for name, data in objects.items()]
         top_objects = sorted(object_list, key=lambda x: x[1], reverse=True)[:6]
-        
-        obj_str = ", ".join(
-            f"{count}×{name}" for name, count in top_objects
-        )
-        lines.append(f"Objects: {obj_str}")
+        obj_str = ", ".join(f"{count}×{name}" for name, count in top_objects)
+        lines.append(f"\n**Detected Objects:** {obj_str}")
     
     # Risk factors
     if triggered:
-        lines.append("\n**Risk Factors:**")
-        for rule in triggered:
-            lines.append(
-                f"• {rule['explanation']} (+{rule['score_added']})"
-            )
+        lines.append("\n**Risk Factors Identified:**")
+        for i, rule in enumerate(triggered, 1):
+            lines.append(f"{i}. {rule['explanation']} (+{rule['score_added']} points)")
     else:
-        lines.append("\n✅ No risk factors detected.")
+        lines.append("\n✅ No significant risk factors detected")
     
     return "\n".join(lines)
 
 
+def _format_weapon_details(weapons: List[dict]) -> str:
+    """Format weapon details for display"""
+    if not weapons:
+        return "No weapons detected"
+    
+    details = []
+    for w in weapons:
+        details.append(f"{w['label']} ({w['confidence']:.0f}% conf)")
+    
+    return ", ".join(details)
+
+
 # ═══════════════════════════════════════════════════════════════════
-# RECOMMENDATION GENERATION
+# RECOMMENDATIONS GENERATOR
 # ═══════════════════════════════════════════════════════════════════
 
 def _generate_recommendations(
     level: str,
-    triggered: List[Dict]
+    triggered: List[Dict],
+    weapons: List[dict]
 ) -> List[str]:
-    """
-    Generate actionable recommendations based on risk level and factors.
-    
-    Args:
-        level: Risk level (LOW/MEDIUM/HIGH/CRITICAL)
-        triggered: List of triggered rules
-        
-    Returns:
-        List of recommendation strings
-    """
+    """Generate actionable recommendations"""
     recommendations = []
     
-    # Base recommendations by risk level
-    base_recommendations = {
+    # Base recommendations by level
+    base_recs = {
         RISK_LOW: [
-            "Scene appears safe. Continue monitoring as needed."
+            "Scene appears safe. Continue normal monitoring."
         ],
         RISK_MEDIUM: [
-            "Increase monitoring level. Alert relevant personnel.",
+            "Increase monitoring level.",
             "Document the situation for records."
         ],
         RISK_HIGH: [
-            "Immediate attention required. Alert security team.",
-            "Document and report the situation immediately.",
-            "Prepare to take protective action if situation escalates."
+            "⚠️ IMMEDIATE ATTENTION REQUIRED",
+            "Alert security personnel immediately.",
+            "Document and report the situation.",
+            "Prepare to take protective action."
         ],
         RISK_CRITICAL: [
-            "⚠️ IMMEDIATE ACTION REQUIRED ⚠️",
-            "Contact emergency services immediately.",
-            "Secure the area and evacuate if necessary.",
-            "Do not approach the threat directly."
+            "🚨 CRITICAL THREAT - IMMEDIATE ACTION REQUIRED",
+            "Contact emergency services (911) immediately.",
+            "Do not approach the threat.",
+            "Evacuate the area if safe to do so.",
+            "Secure all personnel."
         ]
     }
     
-    recommendations.extend(base_recommendations.get(level, []))
+    recommendations.extend(base_recs.get(level, []))
+    
+    # Weapon-specific recommendations
+    if weapons:
+        recommendations.append("🔫 WEAPONS DETECTED - Contact law enforcement immediately")
+        recommendations.append("Do NOT confront armed individuals")
+        recommendations.append("Follow active shooter protocols if applicable")
     
     # Category-specific recommendations
     triggered_categories = {rule["category"] for rule in triggered}
     
-    if "security" in triggered_categories or "crime" in triggered_categories:
-        recommendations.append(
-            "🔒 Alert law enforcement — security threat detected."
-        )
-    
     if "violence" in triggered_categories:
-        recommendations.append(
-            "🚨 Do not approach without proper security support."
-        )
+        recommendations.append("🚨 Potential violence - Do not approach without backup")
     
     if "fire_safety" in triggered_categories:
-        recommendations.append(
-            "🔥 Activate fire safety protocols immediately. Evacuate the area."
-        )
+        recommendations.append("🔥 Fire emergency - Activate fire alarm and evacuate")
     
     if "emergency" in triggered_categories:
-        recommendations.append(
-            "🚑 Emergency medical services may be needed. Clear access routes."
-        )
+        recommendations.append("🚑 Medical emergency - Clear access routes for ambulances")
     
     if "traffic_safety" in triggered_categories:
-        recommendations.append(
-            "🚗 Enforce traffic safety rules. Alert traffic management."
-        )
+        recommendations.append("🚗 Traffic safety concern - Alert traffic management")
     
     if "crowd_safety" in triggered_categories:
-        recommendations.append(
-            "👥 Deploy crowd management measures. Monitor for bottlenecks."
-        )
-    
-    if "workplace_safety" in triggered_categories:
-        recommendations.append(
-            "🏭 Verify PPE compliance. Conduct safety briefing."
-        )
+        recommendations.append("👥 Crowd management - Deploy crowd control measures")
     
     return recommendations
 
@@ -825,54 +749,13 @@ def _generate_recommendations(
 # ═══════════════════════════════════════════════════════════════════
 
 def get_risk_summary(risk_result: Dict) -> str:
-    """
-    Generate a one-line risk summary.
-    
-    Args:
-        risk_result: Output from analyze_risk()
-        
-    Returns:
-        Summary string
-    """
+    """Generate one-line risk summary"""
     level = risk_result.get("risk_level", "UNKNOWN")
     score = risk_result.get("risk_score", 0)
     emoji = risk_result.get("risk_emoji", "❓")
     triggered = risk_result.get("total_rules_triggered", 0)
+    weapons = risk_result.get("weapons_detected", False)
     
-    return f"{emoji} {level} ({score}/100) — {triggered} risk factor(s) detected"
-
-
-def filter_rules_by_category(
-    triggered_rules: List[Dict],
-    category: str
-) -> List[Dict]:
-    """
-    Filter triggered rules by category.
+    weapon_str = " | WEAPONS DETECTED" if weapons else ""
     
-    Args:
-        triggered_rules: List of triggered rule dictionaries
-        category: Category to filter by
-        
-    Returns:
-        Filtered list of rules
-    """
-    return [
-        rule for rule in triggered_rules 
-        if rule.get("category") == category
-    ]
-
-
-def get_highest_risk_category(category_scores: Dict[str, int]) -> Optional[str]:
-    """
-    Get the category contributing most to risk score.
-    
-    Args:
-        category_scores: Dictionary of category scores
-        
-    Returns:
-        Category name with highest score, or None if empty
-    """
-    if not category_scores:
-        return None
-    
-    return max(category_scores, key=category_scores.get)
+    return f"{emoji} {level} ({score}/100) — {triggered} risk factor(s){weapon_str}"
