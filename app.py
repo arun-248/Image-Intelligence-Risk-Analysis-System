@@ -1,12 +1,13 @@
 """
 app.py — VisionIQ: AI Multi-Image Intelligence & Risk Analysis System
-UPGRADED VERSION: Weapon detection, violence indicators, detailed threat analysis
+UPGRADED: ML Risk Engine + SHAP XAI + Grad-CAM + Weapon + Mask Detection
 Run: streamlit run app.py
 """
 
 import streamlit as st
 from PIL import Image
 import time
+import os
 
 st.set_page_config(
     page_title="VisionIQ — AI Risk Intelligence",
@@ -17,9 +18,8 @@ st.set_page_config(
 
 from modules.detection import detect_objects
 from modules.scene import classify_scene
-from modules.risk_engine import analyze_risk
-from modules.ml_risk_engine import analyze_risk_ml  # ← UPGRADE 1 & 2: ML + SHAP
-from modules.gradcam import display_gradcam_in_streamlit  # ← UPGRADE 3: Grad-CAM
+from modules.ml_risk_engine import analyze_risk_ml
+from modules.gradcam import display_gradcam_in_streamlit
 from modules.similarity import compare_images
 from modules.utils import (
     make_confidence_bar_chart, make_risk_gauge,
@@ -29,9 +29,8 @@ from modules.utils import (
 )
 
 # ═══════════════════════════════════════════════════════════════════
-# STARTUP SYSTEM CHECKS
+# STARTUP CHECKS
 # ═══════════════════════════════════════════════════════════════════
-
 try:
     import tensorflow as tf
     TF_OK = True
@@ -44,19 +43,12 @@ try:
 except ImportError:
     YOLO_OK = False
 
-if not TF_OK:
-    st.warning(
-        "⚠️ **TensorFlow not installed** — Scene classification disabled.\n\n"
-        "Install: `pip install tensorflow-cpu --break-system-packages`",
-        icon="⚠️"
-    )
+WEAPON_MODEL_OK = os.path.exists("weapon_detect.pt")
 
+if not TF_OK:
+    st.warning("⚠️ **TensorFlow not installed** — Scene classification disabled. Install: `pip install tensorflow-cpu`", icon="⚠️")
 if not YOLO_OK:
-    st.error(
-        "🚨 **YOLO not installed** — Object detection disabled.\n\n"
-        "Install: `pip install ultralytics --break-system-packages`",
-        icon="🚨"
-    )
+    st.error("🚨 **YOLO not installed** — Object detection disabled. Install: `pip install ultralytics`", icon="🚨")
 
 # ═══════════════════════════════════════════════════════════════════
 # CSS
@@ -64,174 +56,63 @@ if not YOLO_OK:
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Source+Code+Pro:wght@300;400;600&family=Exo+2:wght@300;400;600;700&display=swap');
-
 :root {
-    --bg-deep:    #020b18;
-    --bg-panel:   #041428;
-    --bg-card:    #071e38;
-    --bg-card2:   #0a2540;
-    --cyan:       #00e5ff;
-    --cyan-dim:   #00b4cc;
-    --amber:      #ffab00;
-    --red:        #ff3d3d;
-    --green:      #00e676;
-    --purple:     #aa00ff;
-    --text:       #cdd9e5;
-    --text-dim:   #607d8b;
-    --border:     #0d3558;
-    --border-hi:  #1a5276;
+    --bg-deep:#020b18; --bg-panel:#041428; --bg-card:#071e38; --bg-card2:#0a2540;
+    --cyan:#00e5ff; --cyan-dim:#00b4cc; --amber:#ffab00; --red:#ff3d3d;
+    --green:#00e676; --purple:#aa00ff; --text:#cdd9e5; --text-dim:#607d8b;
+    --border:#0d3558; --border-hi:#1a5276;
 }
-
-html, body, .stApp, [data-testid="stAppViewContainer"] {
-    background-color: var(--bg-deep) !important;
-    color: var(--text) !important;
-    font-family: 'Exo 2', sans-serif !important;
-}
-
-.stApp::before {
-    content: '';
-    position: fixed; top:0; left:0; right:0; bottom:0;
-    background: repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.012) 2px,rgba(0,229,255,0.012) 4px);
-    pointer-events: none; z-index: 0;
-}
-
-[data-testid="stSidebar"] {
-    background: linear-gradient(180deg,#020b18 0%,#041428 50%,#020b18 100%) !important;
-    border-right: 1px solid var(--border) !important;
-}
-[data-testid="stSidebar"] * { color: var(--text) !important; }
-
-h1 { font-family: 'Orbitron',monospace !important; letter-spacing:4px !important; font-weight:900 !important; }
-h2,h3 { font-family: 'Orbitron',monospace !important; letter-spacing:2px !important; }
-
-[data-baseweb="tab-list"] {
-    background: var(--bg-panel) !important;
-    border-bottom: 1px solid var(--border) !important;
-    gap: 4px !important; padding: 4px 4px 0 !important;
-}
-[data-baseweb="tab"] {
-    font-family: 'Orbitron',monospace !important; font-size:10px !important;
-    letter-spacing:1.5px !important; color: var(--text-dim) !important;
-    background: var(--bg-card) !important;
-    border-radius: 4px 4px 0 0 !important; padding: 8px 14px !important;
-    border: 1px solid var(--border) !important; border-bottom:none !important;
-}
-[aria-selected="true"] {
-    color: var(--cyan) !important; background: var(--bg-card2) !important;
-    border-color: var(--cyan) !important; box-shadow: 0 -2px 12px #00e5ff22 !important;
-}
-[data-baseweb="tab-panel"] {
-    background: var(--bg-card2) !important;
-    border: 1px solid var(--border) !important;
-    border-top: 1px solid var(--cyan) !important;
-    border-radius: 0 4px 4px 4px !important; padding: 24px !important;
-}
-
-.stButton > button {
-    background: linear-gradient(135deg,#041428,#071e38) !important;
-    border: 1px solid var(--cyan) !important; color: var(--cyan) !important;
-    font-family: 'Orbitron',monospace !important; font-weight:700 !important;
-    font-size:11px !important; letter-spacing:3px !important;
-    border-radius:4px !important; padding:12px 32px !important;
-    text-transform:uppercase !important; transition:all 0.3s !important;
-}
-.stButton > button:hover {
-    background: linear-gradient(135deg,#071e38,#0a2540) !important;
-    box-shadow: 0 0 20px #00e5ff44 !important; transform:translateY(-1px) !important;
-}
-
-[data-testid="stFileUploader"] {
-    border: 2px dashed var(--border-hi) !important;
-    border-radius:8px !important; background: var(--bg-panel) !important;
-}
-
-.stProgress > div > div > div > div {
-    background: linear-gradient(90deg,var(--cyan),var(--cyan-dim)) !important;
-    box-shadow: 0 0 8px var(--cyan) !important;
-}
-.stProgress > div > div { background: var(--bg-card2) !important; }
-hr { border-color: var(--border) !important; }
-::-webkit-scrollbar { width:4px; }
-::-webkit-scrollbar-track { background: var(--bg-deep); }
-::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius:2px; }
-
-.ph { font-family:'Source Code Pro',monospace; font-size:10px; color:var(--cyan-dim);
-      letter-spacing:3px; text-transform:uppercase; border-bottom:1px solid var(--border);
-      padding-bottom:8px; margin-bottom:16px; }
-
-.sb { background:var(--bg-card); border:1px solid var(--border); border-radius:6px;
-      padding:16px 20px; position:relative; overflow:hidden; margin-bottom:12px; }
-.sb::after { content:''; position:absolute; left:0;top:0;bottom:0; width:3px; background:var(--cyan); }
-.sb.am::after{background:var(--amber);} .sb.rd::after{background:var(--red);} .sb.gn::after{background:var(--green);}
-.sv { font-family:'Orbitron',monospace; font-size:30px; font-weight:700; color:var(--cyan); line-height:1; }
-.sv.am{color:var(--amber);} .sv.rd{color:var(--red);} .sv.gn{color:var(--green);}
-.sl { font-family:'Source Code Pro',monospace; font-size:10px; color:var(--text-dim);
-      letter-spacing:2px; text-transform:uppercase; margin-top:4px; }
-.ss { font-size:13px; color:var(--text); margin-top:6px; line-height:1.5; }
-
-.pill { display:inline-block; font-family:'Orbitron',monospace; font-size:11px; font-weight:700;
-        letter-spacing:2px; padding:4px 14px; border-radius:2px; margin:2px; }
-.pc { background:#1a003d; color:#d580ff; border:1px solid #aa00ff; }
-.ph2 { background:#1a0000; color:#ff8080; border:1px solid #ff3d3d; }
-.pm { background:#1a0d00; color:#ffd080; border:1px solid #ffab00; }
-.pl { background:#001a08; color:#80ffb3; border:1px solid #00e676; }
-
-.rc { background:var(--bg-card); border:1px solid var(--border);
-      border-left:3px solid var(--red); border-radius:4px; padding:12px 16px; margin:8px 0; }
-.rc.am{border-left-color:var(--amber);} .rc.gn{border-left-color:var(--green);}
-.rt { font-family:'Source Code Pro',monospace; font-size:12px; color:var(--text); font-weight:600; }
-.rd2 { font-size:13px; color:var(--text-dim); margin-top:4px; line-height:1.6; }
-.rs { font-family:'Orbitron',monospace; font-size:11px; color:var(--amber); margin-top:4px; }
-
-.or { display:flex; align-items:center; justify-content:space-between;
-      background:var(--bg-card); border:1px solid var(--border);
-      border-radius:4px; padding:10px 14px; margin:6px 0; }
-.on { font-family:'Source Code Pro',monospace; font-size:13px; color:var(--text);
-      font-weight:600; text-transform:uppercase; letter-spacing:1px; }
-.oc { font-family:'Orbitron',monospace; font-size:13px; font-weight:700; }
-
-.sd { background:linear-gradient(135deg,var(--bg-card),var(--bg-card2));
-      border:1px solid var(--border-hi); border-radius:8px; padding:28px;
-      text-align:center; position:relative; overflow:hidden; }
-
-.eb { background:var(--bg-panel
-CONTINUING FILE 7 (app.py) - PART 2
-); border:1px solid var(--border);
-      border-radius:6px; padding:16px 20px; margin:10px 0; }
-.et { font-family:'Orbitron',monospace; font-size:11px; color:var(--cyan-dim);
-      letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; }
-.ex { font-size:14px; color:var(--text); line-height:1.8; }
-
-.ri { display:flex; align-items:flex-start; gap:10px; padding:10px 14px;
-      background:var(--bg-card); border:1px solid var(--border);
-      border-radius:4px; margin:6px 0; font-size:14px; color:var(--text); line-height:1.6; }
-
-.sp { background:var(--bg-card); border:1px solid var(--border);
-      border-radius:6px; padding:14px 18px; margin:8px 0;
-      display:flex; align-items:center; justify-content:space-between; }
-.sc2 { font-family:'Orbitron',monospace; font-size:18px; font-weight:700; }
-
-.weapon-alert {
-    background: linear-gradient(135deg, #2d0000, #1a0000);
-    border: 3px solid #ff3d3d;
-    border-radius: 8px;
-    padding: 20px 24px;
-    margin: 16px 0;
-    animation: pulse-red 2s infinite;
-}
-
-@keyframes pulse-red {
-    0%, 100% { box-shadow: 0 0 10px #ff3d3d44; }
-    50% { box-shadow: 0 0 25px #ff3d3d88; }
-}
-
-.violence-alert {
-    background: linear-gradient(135deg, #2d1400, #1a0a00);
-    border: 2px solid #ffab00;
-    border-radius: 8px;
-    padding: 18px 22px;
-    margin: 14px 0;
-}
+html,body,.stApp,[data-testid="stAppViewContainer"]{background-color:var(--bg-deep)!important;color:var(--text)!important;font-family:'Exo 2',sans-serif!important;}
+.stApp::before{content:'';position:fixed;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.012) 2px,rgba(0,229,255,0.012) 4px);pointer-events:none;z-index:0;}
+[data-testid="stSidebar"]{background:linear-gradient(180deg,#020b18 0%,#041428 50%,#020b18 100%)!important;border-right:1px solid var(--border)!important;}
+[data-testid="stSidebar"] *{color:var(--text)!important;}
+h1{font-family:'Orbitron',monospace!important;letter-spacing:4px!important;font-weight:900!important;}
+h2,h3{font-family:'Orbitron',monospace!important;letter-spacing:2px!important;}
+[data-baseweb="tab-list"]{background:var(--bg-panel)!important;border-bottom:1px solid var(--border)!important;gap:4px!important;padding:4px 4px 0!important;}
+[data-baseweb="tab"]{font-family:'Orbitron',monospace!important;font-size:10px!important;letter-spacing:1.5px!important;color:var(--text-dim)!important;background:var(--bg-card)!important;border-radius:4px 4px 0 0!important;padding:8px 14px!important;border:1px solid var(--border)!important;border-bottom:none!important;}
+[aria-selected="true"]{color:var(--cyan)!important;background:var(--bg-card2)!important;border-color:var(--cyan)!important;box-shadow:0 -2px 12px #00e5ff22!important;}
+[data-baseweb="tab-panel"]{background:var(--bg-card2)!important;border:1px solid var(--border)!important;border-top:1px solid var(--cyan)!important;border-radius:0 4px 4px 4px!important;padding:24px!important;}
+.stButton>button{background:linear-gradient(135deg,#041428,#071e38)!important;border:1px solid var(--cyan)!important;color:var(--cyan)!important;font-family:'Orbitron',monospace!important;font-weight:700!important;font-size:11px!important;letter-spacing:3px!important;border-radius:4px!important;padding:12px 32px!important;text-transform:uppercase!important;transition:all 0.3s!important;}
+.stButton>button:hover{background:linear-gradient(135deg,#071e38,#0a2540)!important;box-shadow:0 0 20px #00e5ff44!important;transform:translateY(-1px)!important;}
+[data-testid="stFileUploader"]{border:2px dashed var(--border-hi)!important;border-radius:8px!important;background:var(--bg-panel)!important;}
+.stProgress>div>div>div>div{background:linear-gradient(90deg,var(--cyan),var(--cyan-dim))!important;box-shadow:0 0 8px var(--cyan)!important;}
+.stProgress>div>div{background:var(--bg-card2)!important;}
+hr{border-color:var(--border)!important;}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:var(--bg-deep);}
+::-webkit-scrollbar-thumb{background:var(--border-hi);border-radius:2px;}
+.ph{font-family:'Source Code Pro',monospace;font-size:10px;color:var(--cyan-dim);letter-spacing:3px;text-transform:uppercase;border-bottom:1px solid var(--border);padding-bottom:8px;margin-bottom:16px;}
+.sb{background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:16px 20px;position:relative;overflow:hidden;margin-bottom:12px;}
+.sb::after{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--cyan);}
+.sb.am::after{background:var(--amber);}.sb.rd::after{background:var(--red);}.sb.gn::after{background:var(--green);}
+.sv{font-family:'Orbitron',monospace;font-size:30px;font-weight:700;color:var(--cyan);line-height:1;}
+.sv.am{color:var(--amber);}.sv.rd{color:var(--red);}.sv.gn{color:var(--green);}
+.sl{font-family:'Source Code Pro',monospace;font-size:10px;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-top:4px;}
+.ss{font-size:13px;color:var(--text);margin-top:6px;line-height:1.5;}
+.pill{display:inline-block;font-family:'Orbitron',monospace;font-size:11px;font-weight:700;letter-spacing:2px;padding:4px 14px;border-radius:2px;margin:2px;}
+.pc{background:#1a003d;color:#d580ff;border:1px solid #aa00ff;}
+.ph2{background:#1a0000;color:#ff8080;border:1px solid #ff3d3d;}
+.pm{background:#1a0d00;color:#ffd080;border:1px solid #ffab00;}
+.pl{background:#001a08;color:#80ffb3;border:1px solid #00e676;}
+.rc{background:var(--bg-card);border:1px solid var(--border);border-left:3px solid var(--red);border-radius:4px;padding:12px 16px;margin:8px 0;}
+.rc.am{border-left-color:var(--amber);}.rc.gn{border-left-color:var(--green);}
+.rt{font-family:'Source Code Pro',monospace;font-size:12px;color:var(--text);font-weight:600;}
+.rd2{font-size:13px;color:var(--text-dim);margin-top:4px;line-height:1.6;}
+.rs{font-family:'Orbitron',monospace;font-size:11px;color:var(--amber);margin-top:4px;}
+.or{display:flex;align-items:center;justify-content:space-between;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;padding:10px 14px;margin:6px 0;}
+.on{font-family:'Source Code Pro',monospace;font-size:13px;color:var(--text);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+.oc{font-family:'Orbitron',monospace;font-size:13px;font-weight:700;}
+.sd{background:linear-gradient(135deg,var(--bg-card),var(--bg-card2));border:1px solid var(--border-hi);border-radius:8px;padding:28px;text-align:center;position:relative;overflow:hidden;}
+.eb{background:var(--bg-panel);border:1px solid var(--border);border-radius:6px;padding:16px 20px;margin:10px 0;}
+.et{font-family:'Orbitron',monospace;font-size:11px;color:var(--cyan-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;}
+.ex{font-size:14px;color:var(--text);line-height:1.8;}
+.ri{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:4px;margin:6px 0;font-size:14px;color:var(--text);line-height:1.6;}
+.sp{background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:14px 18px;margin:8px 0;display:flex;align-items:center;justify-content:space-between;}
+.sc2{font-family:'Orbitron',monospace;font-size:18px;font-weight:700;}
+.weapon-alert{background:linear-gradient(135deg,#2d0000,#1a0000);border:3px solid #ff3d3d;border-radius:8px;padding:20px 24px;margin:16px 0;animation:pulse-red 2s infinite;}
+@keyframes pulse-red{0%,100%{box-shadow:0 0 10px #ff3d3d44;}50%{box-shadow:0 0 25px #ff3d3d88;}}
+.violence-alert{background:linear-gradient(135deg,#2d1400,#1a0a00);border:2px solid #ffab00;border-radius:8px;padding:18px 22px;margin:14px 0;}
+.mask-alert{background:linear-gradient(135deg,#2d1800,#1a0f00);border:2px solid #ff6600;border-radius:8px;padding:18px 22px;margin:14px 0;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -242,13 +123,10 @@ CONTINUING FILE 7 (app.py) - PART 2
 with st.sidebar:
     st.markdown("""
     <div style='padding:16px 0 24px 0;'>
-        <div style='font-family:Source Code Pro,monospace;font-size:9px;
-                    color:#607d8b;letter-spacing:4px;margin-bottom:8px;'>SYSTEM ONLINE ●</div>
-        <div style='font-family:Orbitron,monospace;font-size:22px;font-weight:900;
-                    color:#00e5ff;letter-spacing:3px;'>
+        <div style='font-family:Source Code Pro,monospace;font-size:9px;color:#607d8b;letter-spacing:4px;margin-bottom:8px;'>SYSTEM ONLINE ●</div>
+        <div style='font-family:Orbitron,monospace;font-size:22px;font-weight:900;color:#00e5ff;letter-spacing:3px;'>
             VISION<span style='color:#ffab00;'>IQ</span></div>
-        <div style='font-family:Source Code Pro,monospace;font-size:10px;
-                    color:#607d8b;letter-spacing:2px;margin-top:4px;'>AI THREAT DETECTION SYSTEM</div>
+        <div style='font-family:Source Code Pro,monospace;font-size:10px;color:#607d8b;letter-spacing:2px;margin-top:4px;'>AI THREAT DETECTION SYSTEM</div>
     </div>
     """, unsafe_allow_html=True)
     st.divider()
@@ -266,13 +144,19 @@ with st.sidebar:
     {"High sensitivity" if conf_threshold<0.4 else "Balanced" if conf_threshold<0.6 else "High precision"}
     </div>""", unsafe_allow_html=True)
     st.divider()
-    st.markdown("""
+
+    weapon_model_color = "#00e676" if WEAPON_MODEL_OK else "#ff3d3d"
+    weapon_model_text  = "WeaponDetector (fine-tuned) ✅" if WEAPON_MODEL_OK else "WeaponDetector ❌ NOT LOADED"
+
+    st.markdown(f"""
     <div class="ph">AI Modules Active</div>
     <div style='font-family:Source Code Pro,monospace;font-size:11px;line-height:2;'>
+        <span style='color:{weapon_model_color};'>●</span> <span style='color:#cdd9e5;'>{weapon_model_text}</span><br>
         <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>YOLOv8n-COCO (80 classes)</span><br>
         <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>YOLOv8n-OIV7 (600 classes)</span><br>
         <span style='color:#ff3d3d;'>●</span> <span style='color:#cdd9e5;'>Weapon Detection</span><br>
-        <span style='color:#ffab00;'>●</span> <span style='color:#cdd9e5;'>Violence Detection</span><br>
+        <span style='color:#ff6600;'>●</span> <span style='color:#cdd9e5;'>Mask/Balaclava Detection</span><br>
+        <span style='color:#ffab00;'>●</span> <span style='color:#cdd9e5;'>Violence Scene Analysis</span><br>
         <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>MobileNetV2 Scene AI</span><br>
         <span style='color:#aa00ff;'>●</span> <span style='color:#cdd9e5;'>RandomForest Risk Engine ✨</span><br>
         <span style='color:#aa00ff;'>●</span> <span style='color:#cdd9e5;'>SHAP-style XAI ✨</span><br>
@@ -286,84 +170,20 @@ with st.sidebar:
 # ═══════════════════════════════════════════════════════════════════
 st.markdown("""
 <div style='text-align:center;padding:20px 0 32px 0;'>
-    <div style='font-family:Source Code Pro,monospace;font-size:10px;
-                color:#607d8b;letter-spacing:5px;margin-bottom:12px;'>
+    <div style='font-family:Source Code Pro,monospace;font-size:10px;color:#607d8b;letter-spacing:5px;margin-bottom:12px;'>
         ─────── AI · WEAPON DETECTION · THREAT ANALYSIS ───────
     </div>
     <div style='font-family:Orbitron,monospace;font-size:38px;font-weight:900;
                 background:linear-gradient(90deg,#00e5ff 0%,#00b4cc 40%,#ffab00 100%);
                 -webkit-background-clip:text;-webkit-text-fill-color:transparent;
                 letter-spacing:6px;line-height:1.2;'>VISIONIQ</div>
-    <div style='font-family:Orbitron,monospace;font-size:12px;font-weight:400;
-                color:#607d8b;letter-spacing:4px;margin-top:8px;'>
+    <div style='font-family:Orbitron,monospace;font-size:12px;font-weight:400;color:#607d8b;letter-spacing:4px;margin-top:8px;'>
         MULTI-IMAGE INTELLIGENCE &amp; THREAT DETECTION SYSTEM</div>
-    <div style='font-family:Source Code Pro,monospace;font-size:11px;
-                color:#1a3a5c;margin-top:16px;letter-spacing:2px;'>
-        WEAPON DETECTION · VIOLENCE ANALYSIS · RISK SCORING · IMAGE FORENSICS
+    <div style='font-family:Source Code Pro,monospace;font-size:11px;color:#1a3a5c;margin-top:16px;letter-spacing:2px;'>
+        WEAPON DETECTION · MASK DETECTION · VIOLENCE ANALYSIS · RISK SCORING · IMAGE FORENSICS
     </div>
 </div>
 """, unsafe_allow_html=True)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# HOW IT WORKS
-# ═══════════════════════════════════════════════════════════════════
-with st.expander("📖  WHAT IS THIS SYSTEM? — Click to understand everything", expanded=False):
-    st.markdown("""
-    <div style='font-family:Exo 2,sans-serif;line-height:1.9;color:#cdd9e5;'>
-
-    <div style='font-family:Orbitron,monospace;font-size:13px;color:#00e5ff;
-                letter-spacing:2px;margin-bottom:16px;'>WHAT IS VISIONIQ?</div>
-
-    <b style='color:#ffab00;'>Simple explanation:</b> An advanced AI security system that detects weapons,
-    violence, threats, and dangerous situations in images. Uses multiple deep learning models to identify
-    firearms, knives, violence patterns, emergencies, and safety hazards.
-
-    <br><br>
-    <b style='color:#ffab00;'>Real world use cases:</b><br>
-    🔫 <b>Security screening</b> — Detect weapons at checkpoints, events, airports<br>
-    🚨 <b>Law enforcement</b> — Analyze crime scene photos, surveillance footage<br>
-    🏙️ <b>Smart city surveillance</b> — Auto-detect threats, accidents, emergencies<br>
-    🏫 <b>School/campus security</b> — Monitor for weapons, violence, suspicious activity<br>
-    🏭 <b>Workplace safety</b> — Detect hazards, PPE violations, industrial risks<br>
-
-    <br>
-    <div style='font-family:Orbitron,monospace;font-size:11px;color:#00e5ff;
-                letter-spacing:2px;margin:12px 0 8px 0;'>THE AI PIPELINE (UPGRADED)</div>
-    <div style='background:#020b18;border:1px solid #0d3558;border-radius:6px;
-                padding:16px;font-family:Source Code Pro,monospace;font-size:12px;line-height:2;'>
-    <span style='color:#00e5ff;'>STEP 1</span><span style='color:#607d8b;'> ── </span>
-    <span>Image uploaded → Preprocessed (resize, normalize)</span><br>
-    <span style='color:#00e5ff;'>STEP 2</span><span style='color:#607d8b;'> ── </span>
-    <span>YOLOv8n-COCO scans for 80 common objects (people, vehicles, etc.)</span><br>
-    <span style='color:#00e5ff;'>STEP 3</span><span style='color:#607d8b;'> ── </span>
-    <span>YOLOv8n-OIV7 scans for 600 objects <b>INCLUDING WEAPONS</b> (guns, knives)</span><br>
-    <span style='color:#00e5ff;'>STEP 4</span><span style='color:#607d8b;'> ── </span>
-    <span>Context Analysis detects violence patterns (victims, crowds, aggression)</span><br>
-    <span style='color:#00e5ff;'>STEP 5</span><span style='color:#607d8b;'> ── </span>
-    <span>MobileNetV2 classifies scene type (indoor/outdoor, military/civilian)</span><br>
-    <span style='color:#00e5ff;'>STEP 6</span><span style='color:#607d8b;'> ── </span>
-    <span>Risk Engine checks 30+ rules → calculates threat score 0–100</span><br>
-    <span style='color:#ffab00;'>OUTPUT</span><span style='color:#607d8b;'> ── </span>
-    <span>Dashboard shows weapons, violence indicators, risk score, detailed report</span>
-    </div>
-
-    <br>
-    <b style='color:#ffab00;'>What can it detect?</b><br>
-    🔫 <b>Weapons:</b> Guns, rifles, pistols, knives, blades (50%+ confidence)<br>
-    🚨 <b>Violence:</b> Aggressive crowds, victims, threatening postures<br>
-    🔥 <b>Emergencies:</b> Fire, smoke, accidents, emergency vehicles<br>
-    👥 <b>Crowds:</b> 8+ people for medium risk, 25+ for extreme risk<br>
-    🚗 <b>Traffic:</b> Vehicles, pedestrians, distracted driving<br>
-
-    <br>
-    <b style='color:#ffab00;'>How accurate is weapon detection?</b> The system uses YOLOv8n-OIV7,
-    which is trained on 600 object categories including weapons. For firearms, expect 60-85% 
-    detection accuracy depending on image quality. Knives are detected at 50-75% accuracy.
-    Context analysis adds violence pattern detection even when weapons aren't directly visible.
-
-    </div>
-    """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -371,31 +191,23 @@ with st.expander("📖  WHAT IS THIS SYSTEM? — Click to understand everything"
 # ═══════════════════════════════════════════════════════════════════
 if "Single Image" in mode:
 
-    st.markdown('<div class="ph" style="margin-top:8px;">Upload Image for Analysis</div>',
-                unsafe_allow_html=True)
-
-    uploaded_file = st.file_uploader(
-        "upload", type=["jpg","jpeg","png","webp","bmp"],
-        label_visibility="collapsed"
-    )
+    st.markdown('<div class="ph" style="margin-top:8px;">Upload Image for Analysis</div>', unsafe_allow_html=True)
+    uploaded_file = st.file_uploader("upload", type=["jpg","jpeg","png","webp","bmp"], label_visibility="collapsed")
 
     if uploaded_file:
         image = Image.open(uploaded_file).convert("RGB")
         img_info = get_image_info(image)
 
-        # Info bar
         c1,c2,c3,c4,c5 = st.columns(5)
-        data = [
+        for col,(label,val,cls) in zip([c1,c2,c3,c4,c5],[
             ("FILE", uploaded_file.name[:18], ""),
             ("RESOLUTION", f"{img_info['width']}×{img_info['height']}", ""),
             ("FILE SIZE", f"{round(len(uploaded_file.getvalue())/1024,1)} KB", "am"),
             ("MEGAPIXELS", f"{img_info['megapixels']} MP", ""),
             ("COLOR MODE", img_info['mode'], ""),
-        ]
-        for col, (label, val, cls) in zip([c1,c2,c3,c4,c5], data):
+        ]):
             with col:
-                st.markdown(f"""
-                <div class='sb {cls}'>
+                st.markdown(f"""<div class='sb {cls}'>
                     <div class='sv {cls}' style='font-size:15px;'>{val}</div>
                     <div class='sl'>{label}</div>
                 </div>""", unsafe_allow_html=True)
@@ -404,17 +216,17 @@ if "Single Image" in mode:
         analyze = st.button("🛰️   INITIATE THREAT DETECTION ANALYSIS", key="analyze_btn")
 
         if analyze:
-            prog = st.progress(0)
+            prog   = st.progress(0)
             status = st.empty()
             det_result = sce_result = ris_result = report = None
 
             for pct, msg in [
                 (10,  "Preprocessing image..."),
-                (25,  "Running YOLOv8n-COCO detection (80 classes)..."),
-                (45,  "Running YOLOv8n-OIV7 detection (600 classes + WEAPONS)..."),
-                (60,  "Analyzing violence patterns and threat indicators..."),
+                (20,  "Running WeaponDetector model (fine-tuned)..."),
+                (40,  "Running YOLOv8n-COCO + OIV7 detection..."),
+                (60,  "Running visual scene analysis (mask, pose, robbery)..."),
                 (75,  "Running MobileNetV2 scene classification..."),
-                (85,  "Running risk analysis engine..."),
+                (85,  "Running ML RandomForest risk engine..."),
                 (95,  "Generating threat assessment report..."),
                 (100, "Analysis complete."),
             ]:
@@ -424,7 +236,7 @@ if "Single Image" in mode:
                     unsafe_allow_html=True
                 )
                 prog.progress(pct)
-                if pct == 45:
+                if pct == 40:
                     det_result = detect_objects(image, confidence_threshold=conf_threshold)
                 elif pct == 75:
                     sce_result = classify_scene(image, detection_result=det_result)
@@ -437,25 +249,24 @@ if "Single Image" in mode:
 
             prog.empty(); status.empty()
 
-            # ══════════════════════════════════════════════════════
-            # THREAT ALERTS (UPGRADED)
-            # ══════════════════════════════════════════════════════
-            weapons = det_result.get("weapons_found", [])
-            violence = det_result.get("violence_indicators", [])
-            threat_level = det_result.get("threat_level", "NONE")
-            risk_score = ris_result.get("risk_score", 0)
-            is_danger = sce_result.get("is_dangerous", False)
+            # ── EXTRACT RESULTS ──────────────────────────────────────
+            weapons       = det_result.get("weapons_found", [])
+            masks         = det_result.get("masks_found", [])
+            violence      = det_result.get("violence_indicators", [])
+            threat_level  = det_result.get("threat_level", "NONE")
+            risk_score    = ris_result.get("risk_score", 0)
+            is_danger     = sce_result.get("is_dangerous", False)
+            threat_exp    = det_result.get("threat_explanation", "")
+            r_lvl         = ris_result.get("risk_level", "LOW")
 
-            # CRITICAL ALERT: Weapons detected
+            # ── ALERT BOXES ──────────────────────────────────────────
             if weapons:
                 weapon_count = len(weapons)
                 weapon_names = ", ".join([w["label"] for w in weapons[:3]])
-                max_conf = max([w["confidence"] for w in weapons])
-                
+                max_conf     = max([w["confidence"] for w in weapons])
                 st.markdown(f"""
                 <div class='weapon-alert'>
-                    <div style='font-family:Orbitron,monospace;font-size:16px;
-                                color:#ff3d3d;letter-spacing:2px;font-weight:700;margin-bottom:8px;'>
+                    <div style='font-family:Orbitron,monospace;font-size:16px;color:#ff3d3d;letter-spacing:2px;font-weight:700;margin-bottom:8px;'>
                         🔫 CRITICAL ALERT — {weapon_count} WEAPON(S) DETECTED
                     </div>
                     <div style='font-size:14px;color:#fca5a5;line-height:1.6;'>
@@ -465,77 +276,483 @@ if "Single Image" in mode:
                         <b>Threat Level:</b> {threat_level}<br>
                         <b>⚠️ ACTION REQUIRED:</b> Contact law enforcement immediately. Do not approach.
                     </div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            # HIGH ALERT: Violence indicators
-            elif violence:
+                </div>""", unsafe_allow_html=True)
+
+            if masks:
+                mask_names = ", ".join([m["label"] for m in masks[:3]])
+                max_mask_conf = max([m["confidence"] for m in masks])
+                st.markdown(f"""
+                <div class='mask-alert'>
+                    <div style='font-family:Orbitron,monospace;font-size:15px;color:#ff6600;letter-spacing:2px;font-weight:700;margin-bottom:8px;'>
+                        🎭 WARNING — MASK/FACE COVERING DETECTED
+                    </div>
+                    <div style='font-size:14px;color:#ffcc99;line-height:1.6;'>
+                        <b>Detected:</b> {mask_names.upper()}<br>
+                        <b>Confidence:</b> {max_mask_conf:.0f}%<br>
+                        <b>Why dangerous:</b> Face covering in security context = identity concealment = robbery indicator<br>
+                        <b>⚠️ ACTION:</b> Alert security. Monitor this person closely.
+                    </div>
+                </div>""", unsafe_allow_html=True)
+
+            if not weapons and violence:
                 violence_types = [v.get("type", "Unknown") for v in violence]
                 st.markdown(f"""
                 <div class='violence-alert'>
-                    <div style='font-family:Orbitron,monospace;font-size:14px;
-                                color:#ffab00;letter-spacing:2px;font-weight:700;margin-bottom:8px;'>
+                    <div style='font-family:Orbitron,monospace;font-size:14px;color:#ffab00;letter-spacing:2px;font-weight:700;margin-bottom:8px;'>
                         🚨 WARNING — VIOLENCE INDICATORS DETECTED
                     </div>
                     <div style='font-size:13px;color:#fcd34d;line-height:1.6;'>
                         <b>Detected Patterns:</b> {len(violence)} indicator(s)<br>
-                        <b>Types:</b> {", ".join([v.replace("_", " ").title() for v in violence_types])}<br>
+                        <b>Types:</b> {", ".join([v.replace("_"," ").title() for v in violence_types])}<br>
                         <b>Risk Score:</b> {risk_score}/100<br>
                         <b>⚠️ RECOMMENDATION:</b> Review situation carefully, increase monitoring.
                     </div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            # MEDIUM ALERT: Dangerous scene
-            elif is_danger:
-                scene_label = sce_result.get("scene","").replace("_"," ").upper()
-                st.warning(f"⚠️ DANGER SCENE DETECTED: {scene_label}  |  Risk Score: {risk_score}/100 — See Risk Analysis tab")
-            
-            # HIGH RISK: High score but no weapons/violence
-            elif risk_score >= 50:
-                st.warning(f"⚠️ HIGH RISK SCORE: {risk_score}/100 — Check Risk Analysis tab for details")
+                </div>""", unsafe_allow_html=True)
 
-            # THREAT EXPLANATION BOX
-            threat_explanation = det_result.get("threat_explanation", "")
-            r_lvl = ris_result.get("risk_level", "LOW")
-            if threat_explanation and r_lvl in ["CRITICAL","HIGH","MEDIUM"]:
+            if not weapons and not masks and not violence:
+                if is_danger:
+                    scene_label = sce_result.get("scene","").replace("_"," ").upper()
+                    st.warning(f"⚠️ DANGER SCENE: {scene_label} | Risk Score: {risk_score}/100")
+                elif risk_score >= 50:
+                    st.warning(f"⚠️ HIGH RISK SCORE: {risk_score}/100 — Check Risk Analysis tab")
+
+            # ── THREAT ANALYSIS REPORT BOX ───────────────────────────
+            if threat_exp and r_lvl in ["CRITICAL","HIGH","MEDIUM"]:
                 bcolor = "#cc0000" if r_lvl=="CRITICAL" else "#cc5500" if r_lvl=="HIGH" else "#cc8800"
-                exp_escaped = threat_explanation.replace("<","&lt;").replace(">","&gt;")
+                exp_escaped = threat_exp.replace("<","&lt;").replace(">","&gt;")
                 st.markdown(f"""
                 <div style='background:#0d0000;border:2px solid {bcolor};border-radius:8px;padding:20px 24px;margin:16px 0;'>
                     <div style='font-family:Orbitron,monospace;font-size:12px;color:{bcolor};letter-spacing:2px;font-weight:700;margin-bottom:12px;'>
                         📋 THREAT ANALYSIS REPORT
                     </div>
                     <pre style='font-family:Source Code Pro,monospace;font-size:13px;color:#cdd9e5;white-space:pre-wrap;line-height:1.9;background:transparent;border:none;margin:0;'>{exp_escaped}</pre>
-                </div>
-                """, unsafe_allow_html=True)
+                </div>""", unsafe_allow_html=True)
 
+            # ── TABS ─────────────────────────────────────────────────
             t1,t2,t3,t4,t5,t6,t7 = st.tabs([
                 "🔍  DETECTION", "🌍  SCENE", "⚠️  RISK ANALYSIS",
                 "🧠  XAI / SHAP", "🔥  GRAD-CAM", "📊  CHARTS", "📄  REPORT"
             ])
 
-            # ──────────────────────────────────────────
-            # TAB 1 — DETECTION
-            # ──────────────────────────────────────────
+            # ── TAB 1: DETECTION ─────────────────────────────────────
             with t1:
-                st.markdown("""
-                <div class='eb'><div class='et'>Multi-Model Object & Weapon Detection</div>
+                weapon_model_status = "✅ WeaponDetector (fine-tuned) ACTIVE" if WEAPON_MODEL_OK else "⚠️ WeaponDetector NOT loaded — using COCO + OIV7 + Visual Inference"
+                wms_color = "#00e676" if WEAPON_MODEL_OK else "#ffab00"
+                st.markdown(f"""
+                <div class='eb'><div class='et'>Multi-Model Threat Detection</div>
                 <div class='ex'>
-                This system uses <b>TWO YOLOv8 models</b> for comprehensive detection:<br><br>
-                <b>1. YOLOv8n-COCO</b> — 80 common objects (people, vehicles, phones, etc.)<br>
-                <b>2. YOLOv8n-OIV7</b> — 600 extended objects <b>INCLUDING WEAPONS</b> (guns, rifles, knives)<br><br>
-                Both models run simultaneously. Weapons are highlighted in <b style='color:#ff3d3d;'>RED</b> boxes.
-                The confidence score shows AI certainty (50%+ triggers weapon alerts).
-                </div></div>
-                """, unsafe_allow_html=True)
+                <span style='color:{wms_color};font-weight:700;'>{weapon_model_status}</span><br><br>
+                <b>Layer 1:</b> WeaponDetector — fine-tuned model for guns and knives<br>
+                <b>Layer 2:</b> YOLOv8n-COCO — 80 common objects (people, vehicles, etc.)<br>
+                <b>Layer 3:</b> YOLOv8n-OIV7 — 600 extended objects including weapons<br>
+                <b>Layer 4:</b> Visual Scene Analysis — detects robbery patterns, masks, victim posture<br><br>
+                🔴 RED = Weapon | 🟠 ORANGE = Mask | 🟡 YELLOW = Fire | 🟢 GREEN = Safe object
+                </div></div>""", unsafe_allow_html=True)
 
                 col_img, col_det = st.columns([3,2])
                 with col_img:
-                    st.markdown('<div class="ph">Annotated Output — Weapons Highlighted in RED</div>',
-                                unsafe_allow_html=True)
+                    st.markdown('<div class="ph">Annotated Output</div>', unsafe_allow_html=True)
                     st.image(resize_for_display(det_result["annotated_image"]), use_container_width=True)
-                    st.markdown("""<div style='font-family:Source Code Pro,monospace;font-size:11px;
+
+                with col_det:
+                    st.markdown('<div class="ph">Detection Summary</div>', unsafe_allow_html=True)
+                    total        = det_result["total_objects"]
+                    models_used  = det_result.get("models_used", [])
+                    weapon_count = len(weapons)
+                    mask_count   = len(masks)
+                    threat       = det_result.get("threat_level", "NONE")
+
+                    ca, cb = st.columns(2)
+                    with ca:
+                        st.markdown(f"""<div class='sb'><div class='sv'>{total}</div>
+                        <div class='sl'>Objects Found</div>
+                        <div class='ss'>{len(det_result['object_counts'])} categories</div></div>""",
+                        unsafe_allow_html=True)
+                    with cb:
+                        color_class = "rd" if weapon_count > 0 else "gn"
+                        st.markdown(f"""<div class='sb {color_class}'><div class='sv {color_class}'>{weapon_count}</div>
+                        <div class='sl'>Weapons</div>
+                        <div class='ss'>Threat: {threat}</div></div>""",
+                        unsafe_allow_html=True)
+
+                    if mask_count > 0:
+                        st.markdown(f"""<div class='sb am'><div class='sv am'>{mask_count}</div>
+                        <div class='sl'>Masks Detected</div>
+                        <div class='ss'>🎭 Face covering = robbery risk</div></div>""",
+                        unsafe_allow_html=True)
+
+                    st.markdown(f"""<div class='eb' style='margin-top:10px;'>
+                    <div class='et'>Models Used</div>
+                    <div class='ex'>{", ".join(models_used) if models_used else "N/A"}</div>
+                    </div>""", unsafe_allow_html=True)
+
+                    # Weapons
+                    if weapons:
+                        st.markdown('<div class="ph" style="margin-top:14px;color:#ff3d3d;">🔫 DETECTED WEAPONS</div>', unsafe_allow_html=True)
+                        for w in weapons:
+                            st.markdown(f"""
+                            <div class='or' style='border-left:4px solid #ff3d3d;'>
+                                <div>
+                                    <div class='on' style='color:#ff3d3d;'>🔫 {w['label'].upper()}</div>
+                                    <div style='font-family:Source Code Pro,monospace;font-size:10px;color:#fca5a5;margin-top:2px;'>
+                                        Source: {w['source']} | Type: {w.get('weapon_type','WEAPON')}</div>
+                                </div>
+                                <div class='oc' style='color:#ff3d3d;'>{w['confidence']:.0f}%</div>
+                            </div>""", unsafe_allow_html=True)
+
+                    # Masks
+                    if masks:
+                        st.markdown('<div class="ph" style="margin-top:14px;color:#ff6600;">🎭 DETECTED MASKS</div>', unsafe_allow_html=True)
+                        for m in masks:
+                            st.markdown(f"""
+                            <div class='or' style='border-left:4px solid #ff6600;'>
+                                <div>
+                                    <div class='on' style='color:#ff6600;'>🎭 {m['label'].upper()}</div>
+                                    <div style='font-family:Source Code Pro,monospace;font-size:10px;color:#ffcc99;margin-top:2px;'>
+                                        Source: {m['source']} | Robbery Indicator</div>
+                                </div>
+                                <div class='oc' style='color:#ff6600;'>{m['confidence']:.0f}%</div>
+                            </div>""", unsafe_allow_html=True)
+
+                    # All objects
+                    if det_result["detections"]:
+                        st.markdown('<div class="ph" style="margin-top:14px;">All Detected Objects</div>', unsafe_allow_html=True)
+                        for label, data in det_result["object_counts"].items():
+                            count     = data.get("count",0) if isinstance(data,dict) else data
+                            best_conf = data.get("max_confidence",0) if isinstance(data,dict) else 0
+                            color     = "#00e676" if best_conf>=80 else "#ffab00" if best_conf>=55 else "#94a3b8"
+                            st.markdown(f"""
+                            <div class='or'>
+                                <div>
+                                    <div class='on'>🏷 {label}</div>
+                                    <div style='font-family:Source Code Pro,monospace;font-size:10px;color:#607d8b;margin-top:2px;'>
+                                        {count} instance{"s" if count>1 else ""} detected</div>
+                                </div>
+                                <div class='oc' style='color:{color};'>{best_conf:.0f}%</div>
+                            </div>""", unsafe_allow_html=True)
+
+            # ── TAB 2: SCENE ─────────────────────────────────────────
+            with t2:
+                st.markdown("""
+                <div class='eb'><div class='et'>Scene Classification</div>
+                <div class='ex'>
+                MobileNetV2 classifies the scene type to give context to the risk engine.
+                A weapon in a military scene is treated differently from a weapon in an office or school.
+                </div></div>""", unsafe_allow_html=True)
+
+                scene     = sce_result.get("scene","unknown")
+                conf      = sce_result.get("confidence",0)
+                emoji     = sce_result.get("scene_emoji","📍")
+                desc      = sce_result.get("description","")
+                base_risk = sce_result.get("base_risk_score",10)
+                top_preds = sce_result.get("top_predictions",[])[:8]
+                is_danger = sce_result.get("is_dangerous",False)
+
+                col_sc1, col_sc2 = st.columns([2,3])
+                with col_sc1:
+                    danger_color = "#ff3d3d" if is_danger else "#00e5ff"
+                    st.markdown(f"""
+                    <div class='sd' style='border-color:{danger_color};'>
+                        <div style='font-size:64px;margin-bottom:12px;'>{emoji}</div>
+                        <div style='font-family:Orbitron,monospace;font-size:22px;font-weight:700;color:{danger_color};letter-spacing:4px;text-transform:uppercase;'>
+                            {scene.replace('_',' ')}</div>
+                        <div style='font-family:Source Code Pro,monospace;font-size:13px;color:#607d8b;margin-top:8px;'>
+                            CONFIDENCE: <span style='color:#ffab00;'>{conf}%</span></div>
+                        <div style='font-size:14px;color:#cdd9e5;margin-top:12px;line-height:1.7;'>{desc}</div>
+                        <div style='margin-top:16px;padding:10px;background:#020b18;border-radius:4px;border:1px solid {danger_color};'>
+                            <div style='font-family:Source Code Pro,monospace;font-size:10px;color:#607d8b;letter-spacing:2px;'>SCENE BASE RISK</div>
+                            <div style='font-family:Orbitron,monospace;font-size:22px;color:{danger_color};font-weight:700;margin-top:4px;'>{base_risk}/100</div>
+                            <div style='font-size:11px;color:#607d8b;margin-top:4px;'>{"⚠️ DANGEROUS SCENE" if is_danger else "Base risk before object analysis"}</div>
+                        </div>
+                    </div>""", unsafe_allow_html=True)
+
+                with col_sc2:
+                    st.markdown('<div class="ph">ImageNet Top Predictions</div>', unsafe_allow_html=True)
+                    if top_preds:
+                        for pname, pconf in top_preds:
+                            bar = min(int(pconf * 4), 100)
+                            st.markdown(f"""
+                            <div style='display:flex;align-items:center;justify-content:space-between;margin:5px 0;font-family:Source Code Pro,monospace;font-size:12px;'>
+                                <span style='color:#cdd9e5;text-transform:capitalize;flex:1;'>{pname}</span>
+                                <div style='flex:2;margin:0 12px;background:#0d3558;height:4px;border-radius:2px;'>
+                                    <div style='background:#00e5ff;height:4px;border-radius:2px;width:{bar}%;'></div>
+                                </div>
+                                <span style='color:#ffab00;min-width:42px;text-align:right;'>{pconf}%</span>
+                            </div>""", unsafe_allow_html=True)
+                    else:
+                        st.warning("TensorFlow not installed. Scene classification limited.")
+
+            # ── TAB 3: RISK ANALYSIS ─────────────────────────────────
+            with t3:
+                st.markdown("""
+                <div class='eb'><div class='et'>ML-Powered Risk Analysis — RandomForest</div>
+                <div class='ex'>
+                Risk predicted by a <b>RandomForest model trained on 5,000 synthetic samples</b>.
+                Not hardcoded rules — the model learned risk weights from data.
+                </div></div>""", unsafe_allow_html=True)
+
+                r_score    = ris_result.get("risk_score",0)
+                r_level    = ris_result.get("risk_level","LOW")
+                r_emoji    = ris_result.get("risk_emoji","✅")
+                r_rules    = ris_result.get("triggered_rules",[])
+                r_recs     = ris_result.get("recommendations",[])
+                r_cats     = ris_result.get("category_scores",{})
+                s_base     = ris_result.get("scene_base_risk",10)
+                w_detected = ris_result.get("weapons_detected",False)
+                v_detected = ris_result.get("violence_detected",False)
+
+                pill_map = {"CRITICAL":"pc","HIGH":"ph2","MEDIUM":"pm","LOW":"pl"}
+                pcls = pill_map.get(r_level,"pl")
+
+                col_g, col_r = st.columns([2,3])
+                with col_g:
+                    st.plotly_chart(make_risk_gauge(r_score, r_level), use_container_width=True)
+                    breakdown_rows = f"<div style='display:flex;justify-content:space-between;'><span style='color:#607d8b;'>Scene base risk</span><span style='color:#ffab00;'>+{s_base}</span></div>"
+                    for cat, score in r_cats.items():
+                        color = "#ff3d3d" if score>=30 else "#ffab00" if score>=15 else "#00e676"
+                        breakdown_rows += f"<div style='display:flex;justify-content:space-between;'><span style='color:#607d8b;'>{cat.replace('_',' ').title()}</span><span style='color:{color};'>+{score}</span></div>"
+                    breakdown_rows += f"<div style='border-top:1px solid #0d3558;margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;'><span style='color:#cdd9e5;font-weight:600;'>TOTAL</span><span style='color:#00e5ff;font-family:Orbitron,monospace;font-weight:700;'>{r_score}/100</span></div>"
+                    st.markdown(f"""<div class='eb' style='margin-top:8px;'>
+                        <div class='et'>Score Breakdown</div>
+                        <div style='font-family:Source Code Pro,monospace;font-size:12px;line-height:2;'>{breakdown_rows}</div>
+                        <div style='margin-top:10px;font-size:11px;color:#607d8b;'>
+                            {"🔫 Weapons: YES" if w_detected else "✅ Weapons: NONE"} |
+                            {"🚨 Violence: YES" if v_detected else "✅ Violence: NONE"}
+                        </div></div>""", unsafe_allow_html=True)
+
+                with col_r:
+                    sb_cls = "rd" if r_level in ["HIGH","CRITICAL"] else "am" if r_level=="MEDIUM" else "gn"
+                    verdict = ("⚡ IMMEDIATE ACTION REQUIRED" if r_level in ["HIGH","CRITICAL"]
+                               else "⚠️ Monitor carefully" if r_level=="MEDIUM"
+                               else "✅ Scene appears safe")
+                    st.markdown(f"""<div class='sb {sb_cls}'>
+                        <div style='margin-bottom:10px;'><span class='pill {pcls}'>{r_emoji} {r_level} RISK — {r_score}/100</span></div>
+                        <div class='ss'><b>{len(r_rules)}</b> risk factor{"s" if len(r_rules)!=1 else ""} detected. {verdict}</div>
+                    </div>""", unsafe_allow_html=True)
+
+                    st.markdown('<div class="ph" style="margin-top:16px;">Risk Factors Identified</div>', unsafe_allow_html=True)
+                    if r_rules:
+                        for rule in r_rules:
+                            sc  = rule['score_added']
+                            sev = "rd" if sc>=30 else "am" if sc>=15 else "gn"
+                            cat = rule['category'].replace('_',' ').title()
+                            st.markdown(f"""<div class='rc {sev}'>
+                                <div class='rt'>{rule['explanation']}</div>
+                                <div class='rd2'>Category: <b>{cat}</b> | Feature: {rule['name']}</div>
+                                <div class='rs'>CONTRIBUTION: {sc:.0f}%</div>
+                            </div>""", unsafe_allow_html=True)
+                    else:
+                        st.markdown("""<div class='rc gn'>
+                        <div class='rt'>✅ No Risk Factors Triggered</div>
+                        <div class='rd2'>No dangerous combinations found. Scene appears safe.</div>
+                        </div>""", unsafe_allow_html=True)
+
+                    if r_recs:
+                        st.markdown('<div class="ph" style="margin-top:16px;">AI Recommendations</div>', unsafe_allow_html=True)
+                        for rec in r_recs:
+                            st.markdown(f"""<div class='ri'>
+                                <span style='color:#ffab00;font-size:16px;'>›</span>
+                                <span>{rec}</span>
+                            </div>""", unsafe_allow_html=True)
+
+            # ── TAB 4: XAI / SHAP ────────────────────────────────────
+            with t4:
+                shap_scores = ris_result.get('shap_scores', [])
+                prob_dict   = ris_result.get('class_probabilities', {})
+                model_type  = ris_result.get('model_type', 'RandomForest')
+
+                st.markdown(f"""
+                <div class='eb'><div class='et'>XAI — RandomForest + SHAP-style Feature Importance</div>
+                <div class='ex'>
+                Risk predicted by <b>RandomForest (200 trees, trained on 5,000 samples)</b> — not if-else rules.
+                The bars show which features drove the risk decision for THIS specific image.<br><br>
+                <b>Model:</b> {model_type}<br>
+                <b>XAI Method:</b> Local attribution = global importance × per-sample activation
+                </div></div>""", unsafe_allow_html=True)
+
+                if prob_dict:
+                    st.markdown('<div class="ph">Class Probabilities</div>', unsafe_allow_html=True)
+                    prob_cols = st.columns(4)
+                    level_colors = {'LOW':'#00e676','MEDIUM':'#ffab00','HIGH':'#ef4444','CRITICAL':'#aa00ff'}
+                    for i, cls in enumerate(["LOW","MEDIUM","HIGH","CRITICAL"]):
+                        with prob_cols[i]:
+                            color = level_colors[cls]
+                            prob  = prob_dict.get(cls,0)
+                            st.markdown(f"""<div class='sb' style='text-align:center;'>
+                                <div class='sv' style='color:{color};font-size:22px;'>{prob*100:.1f}%</div>
+                                <div class='sl'>{cls}</div>
+                            </div>""", unsafe_allow_html=True)
+
+                st.markdown('<div class="ph" style="margin-top:16px;">Feature Contributions (SHAP-style)</div>', unsafe_allow_html=True)
+                active = [s for s in shap_scores if s['activation'] > 0]
+                if active:
+                    for item in active:
+                        pct   = item['local_contribution']
+                        bar_w = min(int(pct * 2), 100)
+                        color = '#ff3d3d' if pct>30 else '#ffab00' if pct>15 else '#00e5ff'
+                        st.markdown(f"""
+                        <div style='margin:8px 0;'>
+                            <div style='display:flex;justify-content:space-between;font-family:Source Code Pro,monospace;font-size:12px;margin-bottom:4px;'>
+                                <span style='color:#cdd9e5;'>{item['feature_label']}</span>
+                                <span style='color:{color};font-weight:700;'>{pct:.1f}%</span>
+                            </div>
+                            <div style='background:#0d3558;height:8px;border-radius:4px;'>
+                                <div style='background:{color};height:8px;border-radius:4px;width:{bar_w}%;'></div>
+                            </div>
+                            <div style='font-family:Source Code Pro,monospace;font-size:10px;color:#607d8b;margin-top:2px;'>
+                                Global importance: {item['global_importance']:.4f} | Activation: {item['activation']:.2f}
+                            </div>
+                        </div>""", unsafe_allow_html=True)
+                else:
+                    st.info("No features active for this image — risk is at baseline.")
+
+                st.markdown("""<div class='eb' style='margin-top:16px;border-left:3px solid #aa00ff;'>
+                <div class='et' style='color:#aa00ff;'>INTERVIEW TALKING POINT</div>
+                <div class='ex'>"I trained a RandomForest on 5,000 synthetically generated samples derived
+                from domain rules. The model <b>learned</b> risk weights from data — for example it discovered
+                firearms have 3× the feature importance of crowd density. I implemented local feature attribution
+                by weighting global importances by each feature's activation for the input image — the core idea
+                behind SHAP local explanations. Zero extra cost, no paid library."
+                </div></div>""", unsafe_allow_html=True)
+
+            # ── TAB 5: GRAD-CAM ──────────────────────────────────────
+            with t5:
+                st.markdown("""
+                <div class='eb'><div class='et'>Grad-CAM — CNN Interpretability Heatmap</div>
+                <div class='ex'>
+                Shows <b>which pixels drove the MobileNetV2 scene classification decision</b>.<br>
+                Red/yellow = high influence on the decision. Blue/green = low influence.<br><br>
+                <b>Method:</b> Gradient of predicted class score w.r.t. last conv layer feature maps.
+                </div></div>""", unsafe_allow_html=True)
+
+                if TF_OK:
+                    from modules.scene import get_model as get_scene_model
+                    display_gradcam_in_streamlit(image, model=get_scene_model())
+                    st.markdown("""<div class='eb' style='margin-top:16px;border-left:3px solid #aa00ff;'>
+                    <div class='et' style='color:#aa00ff;'>INTERVIEW TALKING POINT</div>
+                    <div class='ex'>"I implemented Grad-CAM on MobileNetV2 using TensorFlow GradientTape API —
+                    no extra library. Computes gradient of predicted class w.r.t. final conv feature maps,
+                    weighted by global average. Heatmap shows exactly which image regions drove scene
+                    classification — standard industry approach for CNN interpretability."
+                    </div></div>""", unsafe_allow_html=True)
+                else:
+                    st.warning("TensorFlow not installed — install: pip install tensorflow-cpu")
+
+            # ── TAB 6: CHARTS ────────────────────────────────────────
+            with t6:
+                st.markdown("""
+                <div class='eb'><div class='et'>Visual Analytics Dashboard</div>
+                <div class='ex'>Detection confidence, object distribution, and risk category breakdown.</div></div>""",
+                unsafe_allow_html=True)
+                cc1, cc2 = st.columns(2)
+                with cc1:
+                    st.plotly_chart(make_confidence_bar_chart(det_result.get("detections",[])), use_container_width=True)
+                with cc2:
+                    st.plotly_chart(make_object_count_pie(det_result.get("object_counts",{})), use_container_width=True)
+                if ris_result.get("category_scores"):
+                    st.plotly_chart(make_risk_category_bar(ris_result.get("category_scores",{})), use_container_width=True)
+
+            # ── TAB 7: REPORT ────────────────────────────────────────
+            with t7:
+                st.markdown("""
+                <div class='eb'><div class='et'>Complete Threat Assessment Report</div>
+                <div class='ex'>Full AI analysis with weapon details, risk breakdown, and recommendations.</div></div>""",
+                unsafe_allow_html=True)
+                st.markdown(report)
+                st.download_button("📥  Download Threat Assessment Report (.md)", data=report,
+                    file_name=f"visioniq_threat_report_{uploaded_file.name}.md",
+                    mime="text/markdown", use_container_width=True)
+
+    else:
+        st.markdown("""
+        <div style='text-align:center;padding:100px 0;'>
+            <div style='font-size:72px;color:#0d3558;'>🛰️</div>
+            <div style='font-family:Orbitron,monospace;font-size:16px;letter-spacing:4px;color:#1a3a5c;margin-top:20px;'>
+                AWAITING IMAGE INPUT</div>
+            <div style='font-family:Source Code Pro,monospace;font-size:12px;color:#0d3558;margin-top:10px;letter-spacing:2px;'>
+                Upload JPG · PNG · WEBP · BMP to begin threat detection</div>
+        </div>""", unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# MULTI-IMAGE MODE
+# ═══════════════════════════════════════════════════════════════════
+elif "Multi-Image" in mode:
+
+    st.markdown("""
+    <div class='eb'><div class='et'>Image Similarity & Forensic Comparison</div>
+    <div class='ex'>
+    Compare multiple images using MobileNetV2 deep learning embeddings.
+    Useful for finding duplicate evidence photos or related surveillance frames.
+    </div></div>""", unsafe_allow_html=True)
+
+    st.markdown('<div class="ph" style="margin-top:16px;">Upload 2–10 Images to Compare</div>', unsafe_allow_html=True)
+    uploaded_files = st.file_uploader("multi", type=["jpg","jpeg","png","webp"],
+        accept_multiple_files=True, label_visibility="collapsed")
+
+    if uploaded_files and len(uploaded_files) >= 2:
+        images = [Image.open(f).convert("RGB") for f in uploaded_files]
+        names  = [f.name for f in uploaded_files]
+
+        thumb_cols = st.columns(min(len(images), 5))
+        for i, (img, name) in enumerate(zip(images, names)):
+            with thumb_cols[i % 5]:
+                t = img.copy(); t.thumbnail((180,180))
+                st.image(t, caption=name[:16], use_container_width=True)
+
+        if st.button("🛰️   RUN SIMILARITY ANALYSIS", key="sim_btn"):
+            with st.spinner("Extracting deep learning embeddings..."):
+                sim_result = compare_images(images, names)
+
+            pairs = sim_result["pairs"]
+            dups  = sim_result["duplicates"]
+            best  = pairs[0] if pairs else None
+
+            c1,c2,c3,c4 = st.columns(4)
+            for col,(label,val,cls) in zip([c1,c2,c3,c4],[
+                ("Images Analyzed", sim_result["total_images"], ""),
+                ("Pairs Compared", len(pairs), "am"),
+                ("Duplicates Found", len(dups), "rd" if dups else "gn"),
+                ("Highest Similarity", f"{best['similarity']}%" if best else "N/A", ""),
+            ]):
+                with col:
+                    st.markdown(f"""<div class='sb {cls}'>
+                    <div class='sv {cls}'>{val}</div>
+                    <div class='sl'>{label}</div></div>""", unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown('<div class="ph">Similarity Heatmap</div>', unsafe_allow_html=True)
+            st.plotly_chart(make_similarity_heatmap(sim_result["similarity_matrix"], sim_result["names"]), use_container_width=True)
+
+            if dups:
+                st.error(f"🔴 {len(dups)} duplicate(s) detected (≥92% similar)")
+                for dup in dups:
+                    st.error(f"**{dup['img1']}** ↔ **{dup['img2']}** — {dup['similarity']}%")
+
+            st.markdown('<div class="ph" style="margin-top:20px;">All Pair Results</div>', unsafe_allow_html=True)
+            for pair in pairs:
+                sim = pair["similarity"]
+                col = "#00e676" if sim>=80 else "#ffab00" if sim>=50 else "#607d8b"
+                st.markdown(f"""
+                <div class='sp'>
+                    <div style='flex:3;font-family:Source Code Pro,monospace;font-size:12px;'>{pair["img1"]} ↔ {pair["img2"]}</div>
+                    <div style='flex:2;margin:0 16px;'>
+                        <div style='background:#0d3558;height:4px;border-radius:2px;'>
+                            <div style='background:{col};height:4px;border-radius:2px;width:{int(sim)}%;'></div>
+                        </div>
+                    </div>
+                    <div style='flex:1;text-align:right;'><div class='sc2' style='color:{col};'>{sim}%</div></div>
+                </div>""", unsafe_allow_html=True)
+
+    elif uploaded_files and len(uploaded_files) == 1:
+        st.warning("⚠️ Upload at least 2 images")
+    else:
+        st.markdown("""
+        <div style='text-align:center;padding:80px 0;'>
+            <div style='font-size:60px;color:#0d3558;'>🖼️🖼️</div>
+            <div style='font-family:Orbitron,monospace;font-size:14px;letter-spacing:3px;color:#1a3a5c;margin-top:16px;'>
+                UPLOAD 2+ IMAGES TO BEGIN COMPARISON</div>
+        </div>""", unsafe_allow_html=True)monospace;font-size:11px;
                         color:#607d8b;text-align:center;margin-top:6px;'>
                         🔴 RED boxes = WEAPONS · Other colors = general objects
                     </div>""", unsafe_allow_html=True)
