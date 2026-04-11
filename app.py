@@ -1,4 +1,3 @@
-
 """
 app.py — VisionIQ: AI Multi-Image Intelligence & Risk Analysis System
 UPGRADED VERSION: Weapon detection, violence indicators, detailed threat analysis
@@ -19,6 +18,8 @@ st.set_page_config(
 from modules.detection import detect_objects
 from modules.scene import classify_scene
 from modules.risk_engine import analyze_risk
+from modules.ml_risk_engine import analyze_risk_ml  # ← UPGRADE 1 & 2: ML + SHAP
+from modules.gradcam import display_gradcam_in_streamlit  # ← UPGRADE 3: Grad-CAM
 from modules.similarity import compare_images
 from modules.utils import (
     make_confidence_bar_chart, make_risk_gauge,
@@ -273,7 +274,9 @@ with st.sidebar:
         <span style='color:#ff3d3d;'>●</span> <span style='color:#cdd9e5;'>Weapon Detection</span><br>
         <span style='color:#ffab00;'>●</span> <span style='color:#cdd9e5;'>Violence Detection</span><br>
         <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>MobileNetV2 Scene AI</span><br>
-        <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>Risk Analysis Engine</span><br>
+        <span style='color:#aa00ff;'>●</span> <span style='color:#cdd9e5;'>RandomForest Risk Engine ✨</span><br>
+        <span style='color:#aa00ff;'>●</span> <span style='color:#cdd9e5;'>SHAP-style XAI ✨</span><br>
+        <span style='color:#aa00ff;'>●</span> <span style='color:#cdd9e5;'>Grad-CAM Heatmaps ✨</span><br>
         <span style='color:#00e676;'>●</span> <span style='color:#cdd9e5;'>Image Similarity Engine</span>
     </div>""", unsafe_allow_html=True)
 
@@ -426,7 +429,7 @@ if "Single Image" in mode:
                 elif pct == 75:
                     sce_result = classify_scene(image, detection_result=det_result)
                 elif pct == 85:
-                    ris_result = analyze_risk(det_result, sce_result)
+                    ris_result = analyze_risk_ml(det_result, sce_result)
                 elif pct == 95:
                     report = generate_ai_report(uploaded_file.name, det_result, sce_result, ris_result)
                 else:
@@ -492,8 +495,24 @@ if "Single Image" in mode:
             elif risk_score >= 50:
                 st.warning(f"⚠️ HIGH RISK SCORE: {risk_score}/100 — Check Risk Analysis tab for details")
 
-            t1,t2,t3,t4,t5 = st.tabs([
-                "🔍  DETECTION", "🌍  SCENE", "⚠️  RISK ANALYSIS", "📊  CHARTS", "📄  REPORT"
+            # THREAT EXPLANATION BOX
+            threat_explanation = det_result.get("threat_explanation", "")
+            r_lvl = ris_result.get("risk_level", "LOW")
+            if threat_explanation and r_lvl in ["CRITICAL","HIGH","MEDIUM"]:
+                bcolor = "#cc0000" if r_lvl=="CRITICAL" else "#cc5500" if r_lvl=="HIGH" else "#cc8800"
+                exp_escaped = threat_explanation.replace("<","&lt;").replace(">","&gt;")
+                st.markdown(f"""
+                <div style='background:#0d0000;border:2px solid {bcolor};border-radius:8px;padding:20px 24px;margin:16px 0;'>
+                    <div style='font-family:Orbitron,monospace;font-size:12px;color:{bcolor};letter-spacing:2px;font-weight:700;margin-bottom:12px;'>
+                        📋 THREAT ANALYSIS REPORT
+                    </div>
+                    <pre style='font-family:Source Code Pro,monospace;font-size:13px;color:#cdd9e5;white-space:pre-wrap;line-height:1.9;background:transparent;border:none;margin:0;'>{exp_escaped}</pre>
+                </div>
+                """, unsafe_allow_html=True)
+
+            t1,t2,t3,t4,t5,t6,t7 = st.tabs([
+                "🔍  DETECTION", "🌍  SCENE", "⚠️  RISK ANALYSIS",
+                "🧠  XAI / SHAP", "🔥  GRAD-CAM", "📊  CHARTS", "📄  REPORT"
             ])
 
             # ──────────────────────────────────────────
@@ -777,7 +796,115 @@ if "Single Image" in mode:
             # ──────────────────────────────────────────
             # TAB 4 — CHARTS
             # ──────────────────────────────────────────
+            # ──────────────────────────────────────────
+            # TAB 4 — XAI / SHAP
+            # ──────────────────────────────────────────
             with t4:
+                shap_scores = ris_result.get('shap_scores', [])
+                prob_dict = ris_result.get('class_probabilities', {})
+                model_type = ris_result.get('model_type', 'RandomForest')
+                st.markdown(f"""
+                <div class='eb'><div class='et'>XAI — RandomForest + SHAP-style Feature Importance</div>
+                <div class='ex'>
+                The risk level was predicted by a <b>RandomForest classifier</b> trained on
+                <b>5,000 synthetic samples</b> generated from domain knowledge — not hardcoded if-else rules.
+                The feature importances below show <b>which objects drove the risk decision for THIS image</b>.
+                <br><br>
+                <b>Model:</b> {model_type}<br>
+                <b>XAI Method:</b> Local feature attribution (global importance × per-sample activation)
+                </div></div>
+                """, unsafe_allow_html=True)
+
+                if prob_dict:
+                    st.markdown('<div class="ph">Class Probability Distribution</div>', unsafe_allow_html=True)
+                    prob_cols = st.columns(4)
+                    level_colors = {'LOW': '#00e676', 'MEDIUM': '#ffab00', 'HIGH': '#ef4444', 'CRITICAL': '#aa00ff'}
+                    for i, (cls, prob) in enumerate(sorted(prob_dict.items(), key=lambda x: ['LOW','MEDIUM','HIGH','CRITICAL'].index(x[0]))):
+                        with prob_cols[i]:
+                            color = level_colors.get(cls, '#cdd9e5')
+                            st.markdown(f"""<div class='sb' style='text-align:center;'>
+                                <div class='sv' style='color:{color};font-size:22px;'>{prob*100:.1f}%</div>
+                                <div class='sl'>{cls}</div>
+                            </div>""", unsafe_allow_html=True)
+
+                if shap_scores:
+                    st.markdown('<div class="ph" style="margin-top:16px;">Feature Contributions (SHAP-style) — Top 10</div>', unsafe_allow_html=True)
+                    st.markdown("""<div class='eb'><div class='et'>How to Read This</div>
+                    <div class='ex'>Each bar shows how much a specific detected feature contributed to the final
+                    risk classification for <b>this specific image</b>. Higher % = stronger influence on the prediction.
+                    Only <b>active features</b> (present in this image) are shown.</div></div>""", unsafe_allow_html=True)
+
+                    active = [s for s in shap_scores if s['activation'] > 0]
+                    if active:
+                        for item in active:
+                            pct = item['local_contribution']
+                            bar_w = min(int(pct * 2), 100)
+                            color = '#ff3d3d' if pct > 30 else '#ffab00' if pct > 15 else '#00e5ff'
+                            st.markdown(f"""
+                            <div style='margin:8px 0;'>
+                                <div style='display:flex;justify-content:space-between;
+                                            font-family:Source Code Pro,monospace;font-size:12px;
+                                            margin-bottom:4px;'>
+                                    <span style='color:#cdd9e5;'>{item['feature_label']}</span>
+                                    <span style='color:{color};font-weight:700;'>{pct:.1f}%</span>
+                                </div>
+                                <div style='background:#0d3558;height:8px;border-radius:4px;'>
+                                    <div style='background:{color};height:8px;border-radius:4px;
+                                                width:{bar_w}%;transition:width 0.3s;'></div>
+                                </div>
+                                <div style='font-family:Source Code Pro,monospace;font-size:10px;
+                                            color:#607d8b;margin-top:2px;'>
+                                    Global importance: {item['global_importance']:.4f} | Activation: {item['activation']:.2f}
+                                </div>
+                            </div>""", unsafe_allow_html=True)
+                    else:
+                        st.info("No features were active for this image — risk is at baseline.")
+
+                    st.markdown("""<div class='eb' style='margin-top:16px;border-left:3px solid #aa00ff;'>
+                    <div class='et' style='color:#aa00ff;'>INTERVIEW TALKING POINT</div>
+                    <div class='ex'>"I trained a RandomForest classifier on 5,000 synthetically generated samples derived
+                    from domain rules. This means the model <b>learned</b> the risk weights from data — for example,
+                    it discovered firearms have far higher feature importance than crowd density.
+                    I implemented local feature attribution by weighting global feature importances by each
+                    feature's activation for the input image — the core idea behind SHAP local explanations.
+                    This gives us XAI without any paid library."
+                    </div></div>""", unsafe_allow_html=True)
+
+            # ──────────────────────────────────────────
+            # TAB 5 — GRAD-CAM
+            # ──────────────────────────────────────────
+            with t5:
+                st.markdown("""
+                <div class='eb'><div class='et'>Grad-CAM — CNN Interpretability Heatmap</div>
+                <div class='ex'>
+                <b>Grad-CAM</b> (Gradient-weighted Class Activation Mapping) visualizes <b>which pixels
+                in your image drove the MobileNetV2 scene classification decision</b>.
+                <br><br>
+                It computes gradients of the predicted class score with respect to the last
+                convolutional layer's feature maps. Red/yellow regions = high influence.
+                Blue/green regions = low influence.
+                <br><br>
+                <b>Model:</b> MobileNetV2 (ImageNet) — Last Conv Layer: Conv_1
+                </div></div>
+                """, unsafe_allow_html=True)
+                if TF_OK:
+                    from modules.scene import get_model as get_scene_model
+                    display_gradcam_in_streamlit(image, model=get_scene_model())
+                    st.markdown("""<div class='eb' style='margin-top:16px;border-left:3px solid #aa00ff;'>
+                    <div class='et' style='color:#aa00ff;'>INTERVIEW TALKING POINT</div>
+                    <div class='ex'>"I implemented Grad-CAM directly on the MobileNetV2 scene classifier using TensorFlow's
+                    GradientTape API — no extra library. It computes the gradient of the predicted class score
+                    with respect to the final convolutional feature maps, then weights those maps by their global
+                    average importance. The resulting heatmap shows exactly which image regions drove the scene
+                    classification — this is the standard industry approach for CNN interpretability."
+                    </div></div>""", unsafe_allow_html=True)
+                else:
+                    st.warning("TensorFlow not installed — Grad-CAM requires TensorFlow. Install with: pip install tensorflow-cpu")
+
+            # ──────────────────────────────────────────
+            # TAB 6 — CHARTS (was t4)
+            # ──────────────────────────────────────────
+            with t6:
                 st.markdown("""
                 <div class='eb'><div class='et'>Visual Analytics Dashboard</div>
                 <div class='ex'>
@@ -800,7 +927,8 @@ if "Single Image" in mode:
             # ──────────────────────────────────────────
             # TAB 5 — REPORT
             # ──────────────────────────────────────────
-            with t5:
+            # TAB 7 — REPORT
+            with t7:
                 st.markdown("""
                 <div class='eb'><div class='et'>Complete Threat Assessment Report</div>
                 <div class='ex'>
