@@ -1,10 +1,9 @@
 """
-detection.py — Final Threat Detection Engine
-=============================================
-Layer 1: weapon_detect.pt (dedicated weapon model, if present)
-Layer 2: YOLOv8n-OIV7 at conf=0.05 for weapons, conf=threshold for rest
-Layer 3: YOLOv8n-COCO for general objects
-Layer 4: Visual scene analysis for robbery patterns YOLO misses
+detection.py — Threat Detection Engine (Deployment-Optimised)
+=============================================================
+KEY CHANGE: Uses @st.cache_resource so YOLO models are loaded
+ONCE and kept in memory. No re-downloading on every image upload.
+Only uses yolov8n.pt (6MB) and yolov8n-oiv7.pt (7MB) — fast download.
 """
 
 import numpy as np
@@ -18,36 +17,79 @@ try:
 except ImportError:
     YOLO_AVAILABLE = False
 
-# ═══════════════════════════════════════════════════════════════════
-# MODEL CACHE
-# ═══════════════════════════════════════════════════════════════════
-_yolo_weapon = None
-_yolo_coco   = None
-_yolo_oiv7   = None
+try:
+    import streamlit as st
+    ST_AVAILABLE = True
+except ImportError:
+    ST_AVAILABLE = False
 
-def get_weapon_model():
-    global _yolo_weapon
-    if _yolo_weapon is None and YOLO_AVAILABLE and os.path.exists("weapon_detect.pt"):
+
+# ═══════════════════════════════════════════════════════════════════
+# CACHED MODEL LOADERS
+# @st.cache_resource = load once, keep in memory forever
+# Models are NOT re-downloaded on every image upload
+# ═══════════════════════════════════════════════════════════════════
+
+if ST_AVAILABLE:
+    @st.cache_resource(show_spinner="Loading weapon detection model...")
+    def get_weapon_model():
+        if not YOLO_AVAILABLE:
+            return None
+        if os.path.exists("weapon_detect.pt"):
+            try:
+                model = YOLO("weapon_detect.pt")
+                print("[detection] weapon_detect.pt loaded and cached")
+                return model
+            except Exception as e:
+                print(f"[detection] weapon_detect.pt error: {e}")
+        return None
+
+    @st.cache_resource(show_spinner="Loading COCO detection model...")
+    def get_yolo_coco():
+        if not YOLO_AVAILABLE:
+            return None
         try:
-            _yolo_weapon = YOLO("weapon_detect.pt")
-            print("[detection] weapon_detect.pt loaded OK")
+            model = YOLO("yolov8n.pt")
+            print("[detection] yolov8n-COCO loaded and cached")
+            return model
         except Exception as e:
-            print(f"[detection] weapon_detect.pt error: {e}")
-    return _yolo_weapon
+            print(f"[detection] COCO error: {e}")
+            return None
 
-def get_yolo_coco():
-    global _yolo_coco
-    if _yolo_coco is None and YOLO_AVAILABLE:
-        try: _yolo_coco = YOLO("yolov8n.pt")
-        except Exception as e: print(f"[detection] COCO error: {e}")
-    return _yolo_coco
+    @st.cache_resource(show_spinner="Loading OIV7 detection model...")
+    def get_yolo_oiv7():
+        if not YOLO_AVAILABLE:
+            return None
+        try:
+            model = YOLO("yolov8n-oiv7.pt")
+            print("[detection] yolov8n-OIV7 loaded and cached")
+            return model
+        except Exception as e:
+            print(f"[detection] OIV7 error: {e}")
+            return None
 
-def get_yolo_oiv7():
-    global _yolo_oiv7
-    if _yolo_oiv7 is None and YOLO_AVAILABLE:
-        try: _yolo_oiv7 = YOLO("yolov8n-oiv7.pt")
-        except Exception as e: print(f"[detection] OIV7 error: {e}")
-    return _yolo_oiv7
+else:
+    # Fallback when running without Streamlit (e.g. testing)
+    _cache = {}
+
+    def get_weapon_model():
+        if "weapon" not in _cache and YOLO_AVAILABLE and os.path.exists("weapon_detect.pt"):
+            try: _cache["weapon"] = YOLO("weapon_detect.pt")
+            except: _cache["weapon"] = None
+        return _cache.get("weapon")
+
+    def get_yolo_coco():
+        if "coco" not in _cache and YOLO_AVAILABLE:
+            try: _cache["coco"] = YOLO("yolov8n.pt")
+            except: _cache["coco"] = None
+        return _cache.get("coco")
+
+    def get_yolo_oiv7():
+        if "oiv7" not in _cache and YOLO_AVAILABLE:
+            try: _cache["oiv7"] = YOLO("yolov8n-oiv7.pt")
+            except: _cache["oiv7"] = None
+        return _cache.get("oiv7")
+
 
 # ═══════════════════════════════════════════════════════════════════
 # KEYWORDS
@@ -56,9 +98,9 @@ FIREARM_KEYWORDS = [
     "gun","rifle","pistol","handgun","firearm","shotgun","revolver",
     "weapon","carbine","glock","ak","m16","uzi","grenade",
 ]
-KNIFE_KEYWORDS = ["knife","blade","dagger","sword","machete","axe","cleaver"]
-MASK_KEYWORDS  = ["mask","balaclava","face cover","gas mask","hood"]
-FIRE_KEYWORDS  = ["fire","smoke","flame","explosion","burning","blaze"]
+KNIFE_KEYWORDS   = ["knife","blade","dagger","sword","machete","axe","cleaver"]
+MASK_KEYWORDS    = ["mask","balaclava","face cover","gas mask","hood"]
+FIRE_KEYWORDS    = ["fire","smoke","flame","explosion","burning","blaze"]
 
 COCO_CATEGORIES = {
     "PERSON":      ["person"],
@@ -70,33 +112,28 @@ COCO_CATEGORIES = {
     "ACCESSORY":   ["backpack","umbrella","handbag","tie","suitcase"],
 }
 
-def _is_firearm(label):
-    ll = label.lower()
-    return any(k in ll for k in FIREARM_KEYWORDS)
+def _is_firearm(label): return any(k in label.lower() for k in FIREARM_KEYWORDS)
+def _is_knife(label):   return any(k in label.lower() for k in KNIFE_KEYWORDS)
+def _is_mask(label):    return any(k in label.lower() for k in MASK_KEYWORDS)
+def _is_fire(label):    return any(k in label.lower() for k in FIRE_KEYWORDS)
 
-def _is_knife(label):
-    ll = label.lower()
-    return any(k in ll for k in KNIFE_KEYWORDS)
-
-def _is_mask(label):
-    ll = label.lower()
-    return any(k in ll for k in MASK_KEYWORDS)
-
-def _is_fire(label):
-    return any(k in label.lower() for k in FIRE_KEYWORDS)
 
 # ═══════════════════════════════════════════════════════════════════
 # MAIN DETECTION
 # ═══════════════════════════════════════════════════════════════════
 
 def detect_objects(image: Image.Image, confidence_threshold: float = 0.25) -> dict:
+    """
+    Run detection on image. Models are cached — only loaded once.
+    No re-download on every image upload.
+    """
     if not YOLO_AVAILABLE:
         return _no_yolo_result()
 
     all_detections = []
     models_used    = []
 
-    # Layer 1: Dedicated weapon model
+    # Layer 1: Dedicated weapon model (if available)
     weapon_model = get_weapon_model()
     if weapon_model:
         try:
@@ -108,15 +145,16 @@ def detect_objects(image: Image.Image, confidence_threshold: float = 0.25) -> di
                         "bbox":       box.xyxy[0].tolist(),
                         "source":     "WeaponDetector",
                     })
-            models_used.append("WeaponDetector (fine-tuned)")
+            models_used.append("WeaponDetector")
         except Exception as e:
-            print(f"[detection] weapon model error: {e}")
+            print(f"[detection] weapon error: {e}")
 
     # Layer 2: OIV7 — two passes
+    # Pass A at conf=0.05 for weapon classes (catches dark/partial weapons)
+    # Pass B at normal conf for all objects
     oiv7 = get_yolo_oiv7()
     if oiv7:
         try:
-            # Pass A: very low conf for weapon classes only
             for r in oiv7(image, conf=0.05, verbose=False):
                 for box in r.boxes:
                     label = r.names[int(box.cls)]
@@ -126,7 +164,6 @@ def detect_objects(image: Image.Image, confidence_threshold: float = 0.25) -> di
                             "label": label, "confidence": conf,
                             "bbox": box.xyxy[0].tolist(), "source": "YOLOv8-OIV7",
                         })
-            # Pass B: normal conf for all objects
             for r in oiv7(image, conf=confidence_threshold, verbose=False):
                 for box in r.boxes:
                     all_detections.append({
@@ -157,7 +194,7 @@ def detect_objects(image: Image.Image, confidence_threshold: float = 0.25) -> di
 
     all_detections = _deduplicate(all_detections)
 
-    # Classify
+    # Classify detections
     object_counts   = {}
     category_counts = {}
     weapons_found   = []
@@ -193,7 +230,7 @@ def detect_objects(image: Image.Image, confidence_threshold: float = 0.25) -> di
         if _is_fire(label):
             fire_found.append({"label":label,"confidence":conf,"bbox":det["bbox"],"source":det["source"]})
 
-    # Layer 4: Visual analysis
+    # Layer 4: Visual scene analysis
     scene_threats, inferred_weapons = _visual_analysis(image, all_detections, object_counts)
     weapons_found.extend(inferred_weapons)
     violence_indicators = scene_threats
@@ -220,40 +257,39 @@ def detect_objects(image: Image.Image, confidence_threshold: float = 0.25) -> di
         "weapon_model_loaded":     weapon_model is not None,
     }
 
+
 # ═══════════════════════════════════════════════════════════════════
 # VISUAL SCENE ANALYSIS
 # ═══════════════════════════════════════════════════════════════════
 
 def _visual_analysis(image, detections, object_counts):
-    threats = []; inferred_weapons = []
-    arr = np.array(image.convert("RGB"), dtype=np.float32)
-    H, W = arr.shape[:2]
-    persons   = [d for d in detections if "person" in d["label"].lower()]
-    n_persons = len(persons)
-    brightness   = arr.mean()
-    is_dark      = brightness < 100
-    yolo_masks   = [d for d in detections if _is_mask(d["label"])]
-    has_yolo_gun = any(_is_firearm(d["label"]) for d in detections)
+    threats=[]; inferred_weapons=[]
+    arr=np.array(image.convert("RGB"),dtype=np.float32)
+    H,W=arr.shape[:2]
+    persons=[d for d in detections if "person" in d["label"].lower()]
+    n_persons=len(persons)
+    brightness=arr.mean(); is_dark=brightness<100
+    yolo_masks=[d for d in detections if _is_mask(d["label"])]
+    has_yolo_gun=any(_is_firearm(d["label"]) for d in detections)
 
-    gun_pose = False; victim_pose = False
-    if n_persons >= 2:
+    gun_pose=False; victim_pose=False
+    if n_persons>=2:
         for p in persons:
-            x1,y1,x2,y2 = p["bbox"]
-            pw=x2-x1; ph=y2-y1
+            x1,y1,x2,y2=p["bbox"]; pw=x2-x1; ph=y2-y1
             if ph<=0: continue
             aspect=pw/ph; cx=(x1+x2)/2
             if aspect<0.5 and ph>H*0.28: victim_pose=True
             if cx<W*0.6 and pw>ph*0.5:   gun_pose=True
 
-    r,g,b = arr[:,:,0],arr[:,:,1],arr[:,:,2]
-    red_ratio = float(((r>130)&(r>g*1.35)&(r>b*1.35)).sum())/(H*W)
+    r,g,b=arr[:,:,0],arr[:,:,1],arr[:,:,2]
+    red_ratio=float(((r>130)&(r>g*1.35)&(r>b*1.35)).sum())/(H*W)
 
     signals=[]
-    if yolo_masks:     signals.append("masked person / face covering detected")
-    if is_dark:        signals.append("dark indoor / parking environment")
-    if n_persons>=2:   signals.append(f"{n_persons} people in confrontation")
-    if gun_pose:       signals.append("arm-extended threat posture detected")
-    if victim_pose:    signals.append("victim submission posture (hands raised)")
+    if yolo_masks:   signals.append("masked person / face covering detected")
+    if is_dark:      signals.append("dark indoor / parking environment")
+    if n_persons>=2: signals.append(f"{n_persons} people in confrontation")
+    if gun_pose:     signals.append("arm-extended threat posture detected")
+    if victim_pose:  signals.append("victim submission posture (hands raised)")
 
     if len(signals)>=2:
         conf=min(38+len(signals)*11,91)
@@ -272,7 +308,7 @@ def _visual_analysis(image, detections, object_counts):
 
     if victim_pose and n_persons>=2:
         threats.append({"type":"potential_victim","confidence":72,
-                        "reason":"Person in submission posture — hands raised / backing away",
+                        "reason":"Person in submission posture — hands raised",
                         "source":"VISUAL_ANALYSIS"})
 
     if is_dark and n_persons>=2 and not yolo_masks:
@@ -281,8 +317,9 @@ def _visual_analysis(image, detections, object_counts):
                         "source":"VISUAL_ANALYSIS"})
 
     if red_ratio>0.14 and n_persons>=1:
-        threats.append({"type":"violent_scene_coloring","confidence":min(int(red_ratio*280),68),
-                        "reason":"High red pixel density — possible blood / injury / fire",
+        threats.append({"type":"violent_scene_coloring",
+                        "confidence":min(int(red_ratio*280),68),
+                        "reason":"High red pixel density — possible blood / injury",
                         "source":"VISUAL_ANALYSIS"})
 
     if n_persons>=5 and _dense([p["bbox"] for p in persons]):
@@ -292,12 +329,14 @@ def _visual_analysis(image, detections, object_counts):
 
     return threats, inferred_weapons
 
+
 def _gun_bbox(persons, img_size):
     W,H=img_size
     if not persons: return [W*0.3,H*0.3,W*0.5,H*0.5]
     sp=sorted(persons,key=lambda x:x["bbox"][0])
     x1,y1,x2,y2=sp[0]["bbox"]; ph=y2-y1
     return [x2,y1+ph*0.28,x2+(x2-x1)*0.32,y1+ph*0.52]
+
 
 def _build_explanation(weapons,masks,violence,object_counts,threat_level):
     lines=[]
@@ -313,8 +352,8 @@ def _build_explanation(weapons,masks,violence,object_counts,threat_level):
     for fw in firearms:
         if "inference" in fw["label"].lower():
             lines.append(f"  🔫 FIREARM — inferred at {fw['confidence']:.0f}%")
-            lines.append(f"       (YOLO missed it — inferred from scene context)")
-            lines.append(f"       Reason: {fw.get('note','scene analysis')}")
+            lines.append(f"       (YOLO missed it — detected from scene context)")
+            lines.append(f"       Evidence: {fw.get('note','scene analysis')}")
         else:
             lines.append(f"  🔫 {fw['label'].upper()} — {fw['confidence']:.0f}% [{fw['source']}]")
     for kw in knives:
@@ -326,8 +365,8 @@ def _build_explanation(weapons,masks,violence,object_counts,threat_level):
     lines.append("")
     lines.append("WHY THIS IS DANGEROUS:")
     if firearms and masks: lines.append("  • Masked person with firearm = ARMED ROBBERY")
-    elif firearms: lines.append("  • Firearm present — person threatened at gunpoint")
-    elif masks: lines.append("  • Face covering = hiding identity (robbery indicator)")
+    elif firearms:         lines.append("  • Firearm present — person threatened at gunpoint")
+    elif masks:            lines.append("  • Face covering = hiding identity (robbery indicator)")
     seen=set()
     for v in violence:
         r=v.get("reason","")
@@ -352,6 +391,7 @@ def _build_explanation(weapons,masks,violence,object_counts,threat_level):
         lines.append("  ✅ No immediate action required.")
     return "\n".join(lines)
 
+
 def _get_threat_level(weapons,masks,violence):
     if not weapons and not masks and not violence: return "NONE"
     firearms=[w for w in weapons if w["weapon_type"]=="FIREARM"]
@@ -365,6 +405,7 @@ def _get_threat_level(weapons,masks,violence):
     if len(violence)>=2: return "MEDIUM"
     if violence:         return "LOW"
     return "NONE"
+
 
 def _deduplicate(dets,iou_thr=0.45):
     if len(dets)<2: return dets
@@ -434,7 +475,8 @@ def _draw_boxes(image,all_dets,weapons,masks,fire,threat_level):
             tb=draw.textbbox((x1,max(y1-18,0)),f"FIRE {f['confidence']:.0f}%",font=fm)
             draw.rectangle(tb,fill="#cc8800"); draw.text((x1,max(y1-18,0)),f"FIRE {f['confidence']:.0f}%",fill="#fff",font=fm)
         except: pass
-    bc={"CRITICAL":"#cc0000","HIGH":"#cc5500","MEDIUM":"#cc8800","LOW":"#006600","NONE":"#004466"}.get(threat_level,"#333")
+    bc={"CRITICAL":"#cc0000","HIGH":"#cc5500","MEDIUM":"#cc8800",
+        "LOW":"#006600","NONE":"#004466"}.get(threat_level,"#333")
     firearms=[w for w in weapons if w["weapon_type"]=="FIREARM"]
     knives=[w for w in weapons if w["weapon_type"]=="KNIFE/BLADE"]
     parts=[]
@@ -442,7 +484,7 @@ def _draw_boxes(image,all_dets,weapons,masks,fire,threat_level):
     if knives:   parts.append(f"KNIFE x{len(knives)}")
     if masks:    parts.append(f"MASK x{len(masks)}")
     if fire:     parts.append(f"FIRE x{len(fire)}")
-    if not parts: parts=["No weapons directly detected — see threat report"]
+    if not parts: parts=["No direct weapons — see threat report below"]
     banner=f"  {threat_level}: "+"  |  ".join(parts)+"  "
     try:
         tb=draw.textbbox((0,0),banner,font=fb)

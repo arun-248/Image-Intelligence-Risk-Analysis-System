@@ -1,75 +1,17 @@
-
-## **FILE 5: .gitignore (NEW FILE - 50+ LINES)**
-
-Create this file in the **root directory** of your project:
-```
-# ═══════════════════════════════════════════════════════════════════
-# Python Cache Files
-# ═══════════════════════════════════════════════════════════════════
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyc
 *.so
-
-# ═══════════════════════════════════════════════════════════════════
-# Virtual Environments
-# ═══════════════════════════════════════════════════════════════════
 venv/
 env/
-ENV/
 .venv
-.virtualenv
-
-# ═══════════════════════════════════════════════════════════════════
-# IDE and Editor Files
-# ═══════════════════════════════════════════════════════════════════
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
 .DS_Store
-
-# ═══════════════════════════════════════════════════════════════════
-# Distribution and Build
-# ═══════════════════════════════════════════════════════════════════
+Thumbs.db
+*.log
+*.tmp
+*.pt
+*.pkl
 dist/
 build/
-*.egg-info/
-.eggs/
-
-# ═══════════════════════════════════════════════════════════════════
-# Logs and Databases
-# ═══════════════════════════════════════════════════════════════════
-*.log
-*.sqlite
-*.db
-
-# ═══════════════════════════════════════════════════════════════════
-# Temporary Files
-# ═══════════════════════════════════════════════════════════════════
-*.tmp
-*.temp
-.cache/
-
-# ═══════════════════════════════════════════════════════════════════
-# OS-Specific
-# ═══════════════════════════════════════════════════════════════════
-Thumbs.db
-Desktop.ini
-
-# ═══════════════════════════════════════════════════════════════════
-# Project-Specific
-# ═══════════════════════════════════════════════════════════════════
-# YOLO model weights (these are downloaded automatically)
-*.pt
-
-# Uploaded test images (optional - uncomment if you don't want to commit test images)
-# uploads/
-# test_images/
-
-echo __pycache__/ >> .gitignore
-echo *.pyc >> .gitignore
-echo *.pt >> .gitignore
-echo *.pkl >> .gitignore
-echo venv/ >> .gitignore
