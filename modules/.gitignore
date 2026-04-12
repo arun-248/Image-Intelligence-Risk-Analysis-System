@@ -67,3 +67,9 @@ Desktop.ini
 # Uploaded test images (optional - uncomment if you don't want to commit test images)
 # uploads/
 # test_images/
+
+echo __pycache__/ >> .gitignore
+echo *.pyc >> .gitignore
+echo *.pt >> .gitignore
+echo *.pkl >> .gitignore
+echo venv/ >> .gitignore
