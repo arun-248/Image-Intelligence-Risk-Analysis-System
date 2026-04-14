@@ -44,19 +44,7 @@ try:
 except ImportError:
     YOLO_OK = False
 
-if not TF_OK:
-    st.warning(
-        "⚠️ **TensorFlow not installed** — Scene classification disabled.\n\n"
-        "Install: `pip install tensorflow-cpu --break-system-packages`",
-        icon="⚠️"
-    )
-
-if not YOLO_OK:
-    st.error(
-        "🚨 **YOLO not installed** — Object detection disabled.\n\n"
-        "Install: `pip install ultralytics --break-system-packages`",
-        icon="🚨"
-    )
+# TF and YOLO checks handled gracefully inside modules
 
 # ═══════════════════════════════════════════════════════════════════
 # CSS
