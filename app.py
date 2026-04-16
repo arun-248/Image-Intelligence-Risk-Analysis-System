@@ -522,7 +522,7 @@ if "Single Image" in mode:
                 with col_img:
                     st.markdown('<div class="ph">Annotated Output — Weapons Highlighted in RED</div>',
                                 unsafe_allow_html=True)
-                    st.image(resize_for_display(det_result["annotated_image"]), width="stretch)
+                    st.image(resize_for_display(det_result["annotated_image"]), width="stretch")
                     st.markdown("""<div style='font-family:Source Code Pro,monospace;font-size:11px;
                         color:#607d8b;text-align:center;margin-top:6px;'>
                         🔴 RED boxes = WEAPONS · Other colors = general objects
