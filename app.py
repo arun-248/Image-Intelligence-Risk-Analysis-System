@@ -704,7 +704,7 @@ if "Single Image" in mode:
 
                 col_g, col_r = st.columns([2,3])
                 with col_g:
-                    st.plotly_chart(make_risk_gauge(r_score, r_level), width="stretch)
+                    st.plotly_chart(make_risk_gauge(r_score, r_level), width="stretch")
                     
                     # Score breakdown
                     breakdown_rows = f"""
@@ -904,13 +904,13 @@ if "Single Image" in mode:
                 cc1, cc2 = st.columns(2)
                 with cc1:
                     st.plotly_chart(make_confidence_bar_chart(det_result.get("detections",[])),
-                                    width="stretch)
+                                    width="stretch")
                 with cc2:
                     st.plotly_chart(make_object_count_pie(det_result.get("object_counts",{})),
-                                    width="stretch)
+                                    width="stretch")
                 if ris_result.get("category_scores"):
                     st.plotly_chart(make_risk_category_bar(ris_result.get("category_scores",{})),
-                                    width="stretch)
+                                    width="stretch")
 
             # ──────────────────────────────────────────
             # TAB 5 — REPORT
@@ -927,7 +927,7 @@ if "Single Image" in mode:
                 st.markdown(report)
                 st.download_button("📥  Download Threat Assessment Report (.md)", data=report,
                     file_name=f"visioniq_threat_report_{uploaded_file.name}.md",
-                    mime="text/markdown", width="stretch)
+                    mime="text/markdown", width="stretch")
 
     else:
         st.markdown("""
@@ -969,7 +969,7 @@ elif "Multi-Image" in mode:
         for i, (img, name) in enumerate(zip(images, names)):
             with thumb_cols[i % 5]:
                 t = img.copy(); t.thumbnail((180,180))
-                st.image(t, caption=name[:16], width="stretch)
+                st.image(t, caption=name[:16], width="stretch")
 
         run_sim = st.button("🛰️   RUN SIMILARITY ANALYSIS", key="sim_btn")
 
@@ -997,7 +997,7 @@ elif "Multi-Image" in mode:
             st.markdown('<div class="ph">Similarity Heatmap</div>', unsafe_allow_html=True)
             st.plotly_chart(make_similarity_heatmap(
                 sim_result["similarity_matrix"], sim_result["names"]),
-                width="stretch)
+                width="stretch")
 
             if dups:
                 st.error(f"🔴 {len(dups)} duplicate(s) detected (≥92% similar)")
